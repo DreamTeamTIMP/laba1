@@ -1,15 +1,5 @@
 namespace laba1;
 
-internal class Shizo
-{
-    static void Main(string[] args)
-    {
-        Console.WriteLine("Hello, World!");
-
-
-    }
-} 
-
 class Product
 {
     private string _name;
