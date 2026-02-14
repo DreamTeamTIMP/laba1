@@ -22,7 +22,7 @@ public class FileSpecListRoot
     // В задании не сказанно про сигнатуру, но это очевидно необходимая часть
     private byte[] signature = "PRS"u8.ToArray(); // Сигнатура два байта, представляющие символы ‘PRS’.
     private int pointerToFirstNode = -1;
-    private int pointerToFreeSpace;
+    private int pointerToFreeSpace = -1;
 }
 
 public class FileSpecListNode
@@ -41,7 +41,7 @@ public class FileProductListRoot
     private short DateSpaceSize = 16; // Длина имени компанента в записи
     private int pointerToFirstNode = -1;
     private int pointerToFreeSpace;
-    private byte[] specFileName; //!!! Without .prs
+    private byte[] specFileName;
 }
 
 public class FileProductListNode
