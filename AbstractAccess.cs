@@ -102,7 +102,7 @@ public class ListRoot
         SpecList.Add(newRecord);
     }
 
-    public void printAll()
+    public void PrintAll()
     {
         Console.WriteLine($"{"", 15}{ProdFileName}:");
         Console.WriteLine($"{"DateSpaceSize:", -30}{DateSpaceSize}B");
@@ -117,7 +117,6 @@ public class ListRoot
                 Console.WriteLine($"{prod.componentData, -30}Detail");
         }
 
-        Console.WriteLine("");
         Console.WriteLine("");
 
         Console.WriteLine($"{"", 15}{SpecFileName}:");
