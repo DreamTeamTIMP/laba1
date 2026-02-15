@@ -1,0 +1,13 @@
+input table product
+input leg node
+input sofa product
+input screw detail
+input pad detail
+input glue detail
+input pillow detail
+input table leg 4
+input table screw 4
+input leg pad 1
+input leg glue 1
+input sofa leg 6
+printall
