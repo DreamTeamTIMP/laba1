@@ -1,85 +1,164 @@
-using System.Security.Authentication.ExtendedProtection;
+using System.Text;
 
 namespace laba1;
 
 public class ListRoot
 {
-    private byte[] _prodFileName = "products"u8.ToArray();
-    private byte[] _specFileName = "products"u8.ToArray();
-    public byte[] ProdFileName 
+    private byte[] _prodFileData = Encoding.UTF8.GetBytes("products.ps");
+    private byte[] _specFileData = Encoding.UTF8.GetBytes("products.prs");
+    public string ProdFileName 
     {
-        get 
-        {
-            return _prodFileName;
-        }
+        get => Encoding.UTF8.GetString(_prodFileData);
         set 
         {
-            if(value is not null && value.Length <= 16)
+            if (value is not null)
             {
-                _prodFileName = value;
+                byte[] temp = Encoding.UTF8.GetBytes(value);
+                if (temp.Length > 16)
+                    throw new InvalidDataException("Products file name to long!");
+                _prodFileData = temp;                    
             }
             else
             {
-                throw new InvalidDataException("Products file name to long!");
+                throw new InvalidDataException("Products file name is empty!");
             }
         }
     }
 
-    public byte[] SpecFileName 
+    public string SpecFileName 
     {
-        get 
-        {
-            return _specFileName;
-        }
+        get => Encoding.UTF8.GetString(_specFileData);
         set 
         {
-            if(value is not null && value.Length <= 16)
+            if (value is not null)
             {
-                _specFileName = value;
+                byte[] temp = Encoding.UTF8.GetBytes(value);
+                if (temp.Length > 16)
+                    throw new InvalidDataException("Specifications file name to long!");
+                _specFileData = temp;                    
             }
             else
             {
-                throw new InvalidDataException("Specifications file name to long!");
+                throw new InvalidDataException("Specifications file name is empty!");
             }
         }
     }
 
     public short DateSpaceSize = 16; // В байтах
 
-    public ProdListNode? prodList = null;
-    public SpecListNode? specList = null;
-
-    public void AddProd(ProdListNode prod)
+    //private ProdListNode? lastProd = null;
+    //private SpecListNode? lastSpec = null;
+    
+    private List<ProdListNode> ProdList = [];
+    private List<SpecListNode> SpecList = [];
+    
+    public void AddNode(ushort mentions, byte[] data)
     {
-        prodList?.AddToEnd(prod);
+        if (ProdList.Find(prod => prod.componentData == data) is not null)
+            throw new Exception("Component with this name already exist!");
+
+        ProdListNode node = new(data);
+        SpecListNode spec = new(node, mentions); 
+        node.Spec = spec;
+        SpecList.Add(spec);
+
+        AddComponent(node);
     }
 
-    public void AddProd(byte[]? specName, )
+    public void AddDetail(byte[] data)
     {
-        prodList?.AddToEnd(prod);
+        if (ProdList.Find(prod => prod.componentData == data) is not null)
+            throw new Exception("Component with this name already exist!");
+
+        ProdListNode detail = new(data);
+        
+        AddComponent(detail);
     }
 
-    public void AddSpec(ProdListNode prod)
+    private void AddComponent(ProdListNode component)
     {
-        prodList?.AddToEnd(prod);
+        var lastElem = ProdList.LastOrDefault();
+        if (lastElem is not null)
+            lastElem.Next = component;
+
+        ProdList.Add(component);
+    }
+
+    //private void NewSpec()
+
+    public void AddToSpec(ProdListNode prod, ProdListNode component, ushort mentions)
+    {
+        if (prod.Spec is null)
+            throw new ArgumentException("Detail can't have specification!");            
+
+        // Надеюсь это сравнение ссылок хотя по идеи это не критично
+        for (var i = prod.Spec; i is not null; i = i.Next)
+            if (i.Prod == component)
+                throw new Exception("Product already have this entry in specificication!");
+
+        SpecListNode newRecord = new(component, mentions); 
+        var lastRecord = prod.Spec.GetLastElementInSequence();
+        lastRecord.Next = newRecord;
+        SpecList.Add(newRecord);
+    }
+
+    public void printAll()
+    {
+        Console.WriteLine($"{"", 15}{ProdFileName}:");
+        Console.WriteLine($"{"DateSpaceSize:", -30}{DateSpaceSize}B");
+        Console.WriteLine($"{"SpecFileName:", -30}{SpecFileName}");
+        Console.WriteLine($"{"", 15}Products:");
+        Console.WriteLine($"{"Product name", -30}Product Type");
+        foreach(var prod in ProdList)
+        {
+            if (prod.Spec is not null)
+                Console.WriteLine($"{prod.componentData, -30}Node");
+            else
+                Console.WriteLine($"{prod.componentData, -30}Detail");
+        }
+
+        Console.WriteLine("");
+        Console.WriteLine("");
+
+        Console.WriteLine($"{"", 15}{SpecFileName}:");
+        Console.WriteLine($"{"", 15}Specs:");
+        
+        int i = 0;
+        foreach(var spec in SpecList)
+        {
+            if(i == 0)
+            {
+                Console.WriteLine($"{"", 15}{spec.Prod.componentData} spec:");
+                Console.WriteLine($"{"Spec", -30} Mentions");
+            }
+            else
+                Console.WriteLine($"{spec.Prod.componentData, -30}{spec.Mentions}");
+
+            if(spec.Next is null) 
+                i = 0;
+        }
     }
 }
 
 public class ProdListNode
 {
     //Бит удаления может иметь значение 0 (запись активна) или -1 (запись помечена наудаление).
-    private sbyte canBeDeleted = -1;
+    private sbyte CanBeDeleted = 0;
     public ProdListNode? Next = null;
     public SpecListNode? Spec = null; // У деталей нет спецификации => null  
 
-    private byte[] componentData = []; // Например для DataSpaceSize 16 байт "abcdefqw123\0\0\0\0\0"u8
+    public byte[] componentData = []; // Например для DataSpaceSize 16 байт "abcdefqw123\0\0\0\0\0"u8
 
-    public ProdListNode(SpecListNode? spec = null, byte[]? data = null,sbyte canBeDel = -1)
+    public ProdListNode(SpecListNode? spec = null, byte[]? data = null)
     {
         if(data is null)
-            componentData = "default.ps"u8.ToArray();
-        canBeDeleted = canBeDel;
+            componentData = "default"u8.ToArray();
         Spec = spec;
+    }
+
+    public ProdListNode(byte[] data)
+    {
+        componentData = data;
     }
     
     public void AddToEnd(ProdListNode prod)
@@ -92,8 +171,22 @@ public class ProdListNode
 
 public class SpecListNode
 {
-    private sbyte canBeDeleted = -1;
-    public SpecListNode? next = null;
-    public ProdListNode? prod = null;
-    public short mentions = 0;
+    public sbyte CanBeDeleted = 0;
+    public SpecListNode? Next = null;
+    public ProdListNode Prod;
+    public ushort Mentions = 1;
+
+    public SpecListNode(ProdListNode prod, ushort mentions = 1)
+    {
+        Mentions = mentions;
+        Prod = prod;
+    }
+
+    public SpecListNode GetLastElementInSequence()
+    {
+        var i = this;
+        while (i.Next is not null)
+            i = i.Next;
+        return i;
+    }
 }

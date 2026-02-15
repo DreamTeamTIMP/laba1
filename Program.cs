@@ -9,8 +9,8 @@ public class Program
     static public int Main()
     {
         ListRoot listRoot = new();
-        listRoot.ProdFileName = "Sigma.ps"u8.ToArray();
-        listRoot.SpecFileName = "Sigma.prs"u8.ToArray();
+        listRoot.ProdFileName = "Sigma.ps";
+        listRoot.SpecFileName = "Sigma.prs";
         
 
         while(true)
@@ -22,7 +22,9 @@ public class Program
 
                 if(string.IsNullOrEmpty(input))
                     throw new Exception("Incorrect input!");
-            
+
+                if(input == "PrintAll")
+                    listRoot.printAll();
                     
             }
             catch (Exception exception)
