@@ -1,3 +1,6 @@
+using System.IO;
+using System.Runtime.InteropServices;
+
 namespace laba1;
 
 public abstract class FileManager
@@ -15,40 +18,67 @@ public class FileOpener : FileManager
     public void Open(string name) { }
 }
 
-//-1 аналог null по заданию
+public class RootFile
+{
+    public FileProdHeader ProdFile;
+    public FileSpecHeader SpecFile;
 
-public class FileSpecListRoot
+    public List<FileProdHeader> ProdNodes = [];
+    public List<FileSpecHeader> SpecNodes = [];
+
+    public byte[] RawSpec;
+    public byte[] RawProd;
+
+    public string Path;
+
+    public void Create(string path, string fileName, ushort compDataSize, string specFileName)
+    {
+        
+    }
+
+    public void Open(string path)
+    {
+
+    }
+}
+
+
+
+
+
+
+//-1 аналог null по заданию
+public class FileSpecHeader
 {
     // В задании не сказанно про сигнатуру, но это очевидно необходимая часть
-    private byte[] signature = "PRS"u8.ToArray(); // Сигнатура два байта, представляющие символы ‘PRS’.
-    private int pointerToFirstNode = -1;
-    private int pointerToFreeSpace = -1;
+    byte[] signature = "PRS"u8.ToArray(); // Сигнатура два байта, представляющие символы ‘PRS’.
+    int pointerToFirstNode = -1;
+    int pointerToFreeSpace = -1;
 }
 
-public class FileSpecListNode
+public class FileSpecNode
 {
     //Бит удаления может иметь значение 0 (запись активна) или -1 (запись помечена наудаление).
-    private sbyte canBeDeleted = 0;
-    private int pointerToProductNode = -1;
-    private ushort countOfMentions = 0; // Число вхождений
-    private int pointerToNextNode = -1;
+    sbyte canBeDeleted = 0;
+    int pointerToProductNode = -1;
+    ushort countOfMentions = 0; // Число вхождений
+    int pointerToNextNode = -1;
 }
 
-
-public class FileProductListRoot
+public class FileProdHeader
 {
-    private byte[] signature = "PS"u8.ToArray(); // Сигнатура два байта, представляющие символы ‘PS’.
-    private ushort DateSpaceSize = 16; // Длина имени компанента в записи
-    private int pointerToFirstNode = -1;
-    private int pointerToFreeSpace = -1;
-    private byte[] specFileName = "products.prs"u8.ToArray(); // 16 байт
+    byte[] signature = "PS"u8.ToArray(); // Сигнатура два байта, представляющие символы ‘PS’.
+    ushort DateSpaceSize = 16; // Длина имени компанента в записи
+    int pointerToFirstNode = -1;
+    int pointerToFreeSpace = -1;
+    byte[] specFileName = "products.prs"u8.ToArray(); // 16 байт
 }
 
-public class FileProductListNode
+public class FileProdNode
 {
     //Бит удаления может иметь значение 0 (запись активна) или -1 (запись помечена наудаление).
-    private sbyte canBeDeleted = 0;
-    private int pointerToSpecNode = -1;
-    private int pointerToNextNode = -1;
-    private byte[] componentName = "default"u8.ToArray(); 
+    sbyte canBeDeleted = 0;
+    int pointerToSpecNode = -1;
+    int pointerToNextNode = -1;
+    byte[] componentName = "default"u8.ToArray(); 
 }

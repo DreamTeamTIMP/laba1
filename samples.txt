@@ -10,4 +10,7 @@ input table screw 4
 input leg pad 1
 input leg glue 1
 input sofa leg 6
+input room product
+input room sofa 10
+input room table 10
 printall

@@ -40,8 +40,8 @@ public class ListRoot
 
     public short DataSpaceSize = 16; // В байтах
 
-    private List<ProdListNode> ProdList = [];
-    private List<SpecListNode> SpecList = [];
+    public List<ProdListNode> ProdList { get; private set; } = [];
+    public List<SpecListNode> SpecList { get; private set; } = [];
 
     private void StringToData(ReadOnlySpan<char> str, Span<byte> data)
     {
@@ -59,13 +59,13 @@ public class ListRoot
         if (ProdList.Any(prod => prod.componentData.AsSpan().SequenceEqual(data.AsSpan())))
             throw new ArgumentException("Component with this name already exist!");
 
-        ProdListNode node = new(data);
+        ProdListNode node = new(this, data);
+        AddComponent(node);
         
-        SpecListNode spec = new(node);
-        node.Spec = spec;
+        SpecListNode spec = new(this, ProdList.Count - 1);
         SpecList.Add(spec);
 
-        AddComponent(node);
+        node.SpecIndex = SpecList.Count - 1;
     }
 
     public void AddDetail(string name)
@@ -76,18 +76,18 @@ public class ListRoot
         if (ProdList.Any(prod => prod.componentData.AsSpan().SequenceEqual(data.AsSpan())))
             throw new ArgumentException("Component with this name already exist!");
 
-        ProdListNode detail = new(data);
+        ProdListNode detail = new(this, data);
         
         AddComponent(detail);
     }
 
     private void AddComponent(ProdListNode component)
     {
-        var lastElem = ProdList.LastOrDefault();
-        if (lastElem is not null)
-            lastElem.Next = component;
-
+        var lastIndex = ProdList.Count;
         ProdList.Add(component);
+
+        if (lastIndex != 0)
+            ProdList[lastIndex - 1].NextIndex = lastIndex;
     }
 
     public void AddToSpec(string prodName, string compName, ushort mentions)
@@ -101,27 +101,29 @@ public class ListRoot
         byte[] compData = new byte[DataSpaceSize];
         StringToData(compName, compData);
 
-        var prod = ProdList.Find(p => p.componentData.AsSpan().SequenceEqual(prodData.AsSpan())) 
-            ?? throw new ArgumentException($"Product with {prodName} name doesn't exist");
-        var comp = ProdList.Find(p => p.componentData.AsSpan().SequenceEqual(compData.AsSpan()))
-            ?? throw new ArgumentException($"Component with {compName} name doesn't exist");
+        var prodIndex = ProdList.FindIndex(p => p.componentData.AsSpan().SequenceEqual(prodData.AsSpan()));
+        if (prodIndex == -1) 
+            throw new ArgumentException($"Product with {prodName} name doesn't exist");
+        var compIndex = ProdList.FindIndex(p => p.componentData.AsSpan().SequenceEqual(compData.AsSpan()));
+        if (compIndex == -1) 
+            throw new ArgumentException($"Component with {compName} name doesn't exist");
         
-        AddToSpec(prod, comp, mentions);
-    }
+        var prod = ProdList[prodIndex];
+        var comp = ProdList[compIndex];
 
-    public void AddToSpec(ProdListNode prod, ProdListNode component, ushort mentions)
-    {
-        if (prod.Spec is null)
+        if (prod.SpecIndex == -1)
             throw new ArgumentException("Detail can't have specification!");            
 
         for (var i = prod.Spec; i is not null; i = i.Next)
-            if (i.Prod == component)
+            if (i.ProdIndex == compIndex)
                 throw new ArgumentException("Product already have this entry in specificication!");
 
-        SpecListNode newRecord = new(component, mentions); 
-        var lastRecord = prod.Spec.GetLastElementInSequence();
-        lastRecord.Next = newRecord;
+        SpecListNode newRecord = new(this, compIndex, mentions); 
         SpecList.Add(newRecord);
+        
+        //Проверка в if. LSP не понимает, что это одно и тоже
+        var lastRecord = prod.Spec!.GetLastElementInSequence();
+        lastRecord.Next = newRecord;
     }
 
     public void PrintAll()
@@ -170,19 +172,95 @@ public class ProdListNode
 {
     //Бит удаления может иметь значение 0 (запись активна) или -1 (запись помечена наудаление).
     private sbyte CanBeDeleted = 0;
-    public ProdListNode? Next = null;
-    public SpecListNode? Spec = null; // У деталей нет спецификации => null  
+    private readonly ListRoot _root; 
+    private int _nextIndex = -1;
+    private int _specIndex = -1; // У деталей нет спецификации => null  
+    public ProdListNode? Next 
+    {
+        get
+        {
+            if (_nextIndex == -1)
+                return null;
+            return _root.ProdList[_nextIndex];
+        }
+        set 
+        {
+            if (value is null)
+            {
+                _nextIndex = -1;
+            }
+            else
+            {
+                var temp = _root.ProdList.IndexOf(value);
+                if (temp == -1)
+                    throw new InvalidOperationException("The node does not belong to the current list.");
+                _nextIndex = temp;
+            }
+        }   
+    }
+
+    public int NextIndex
+    {
+        get => _nextIndex;
+        set
+        {
+            if(value < -1 || value > _root.ProdList.Count - 1)
+                throw new ArgumentOutOfRangeException(nameof(value), value, $"Index must be between -1 and {_root.ProdList.Count - 1}\nOld index: {_nextIndex}");
+            _nextIndex = value;
+        }   
+    }
+
+    public SpecListNode? Spec 
+    {
+        get
+        {
+            if (_specIndex == -1)
+                return null;
+            return _root.SpecList[_specIndex];
+        }
+        set
+        {
+            if (value is null)
+            {
+                _specIndex = -1;
+            }
+            else
+            {
+                _specIndex = _root.SpecList.IndexOf(value);
+            }
+        }   
+    }
+
+    public int SpecIndex
+    {
+        get => _specIndex;
+        set
+        {
+            if(value < -1 || value > _root.SpecList.Count - 1)
+                throw new ArgumentOutOfRangeException(nameof(value), value, $"Index must be between -1 and {_root.SpecList.Count - 1}\nOld index: {_specIndex}");
+            _specIndex = value;
+        }
+    }
 
     public byte[] componentData; // Например для DataSpaceSize 16 байт "abcdefqw123\0\0\0\0\0"u8
 
-    public ProdListNode(SpecListNode? spec, byte[] data)
+    public ProdListNode(ListRoot root, SpecListNode? spec, byte[] data)
     {
+        _root = root;
         componentData = data;
         Spec = spec;
     }
 
-    public ProdListNode(byte[] data)
+    public ProdListNode(ListRoot root, int specIndex, byte[] data)
     {
+        _root = root;
+        componentData = data;
+        SpecIndex = specIndex;
+    }
+
+    public ProdListNode(ListRoot root, byte[] data)
+    {
+        _root = root;
         componentData = data;
     }
     
@@ -198,15 +276,85 @@ public class ProdListNode
 
 public class SpecListNode
 {
+    private readonly ListRoot _root;
     public sbyte CanBeDeleted = 0;
-    public SpecListNode? Next = null;
-    public ProdListNode Prod;
+    public int _nextIndex = -1;
+    public int _prodIndex;
+    public SpecListNode? Next 
+    {
+        get
+        {
+            if (_nextIndex == -1)
+                return null;
+            return _root.SpecList[_nextIndex];
+        }
+        set 
+        {
+            if (value is null)
+            {
+                _nextIndex = -1;
+            }
+            else
+            {
+                var temp = _root.SpecList.IndexOf(value);
+                if (temp == -1)
+                    throw new InvalidOperationException("The node does not belong to the current list.");
+                _nextIndex = temp;
+            }
+        }   
+    }
+
+    public int NextIndex
+    {
+        get => _nextIndex;
+        set
+        {
+            if(value < -1 || value > _root.SpecList.Count - 1)
+                throw new ArgumentOutOfRangeException(nameof(value), value, $"Index must be between -1 and {_root.SpecList.Count - 1}\nOld index: {_nextIndex}");
+            _nextIndex = value;
+        }   
+    }
+
+    public ProdListNode Prod 
+    {
+        get
+        {
+            return _root.ProdList[_prodIndex];
+        }
+        init
+        {
+            var temp = _root.ProdList.IndexOf(value);
+            if (temp == -1)
+                throw new InvalidOperationException("The node does not belong to the current list.");
+            _prodIndex = temp;
+        }
+    }
+
+    public int ProdIndex
+    {
+        get => _prodIndex;
+        set
+        {
+            if(value < -1 || value > _root.ProdList.Count - 1)
+                throw new ArgumentOutOfRangeException(nameof(value), value, $"Index must be between -1 and {_root.ProdList.Count - 1}\nOld index: {_prodIndex}");
+            _prodIndex = value;
+        }
+    }
+
     public ushort Mentions = 0;
 
-    public SpecListNode(ProdListNode prod, ushort mentions = 0)
+    public SpecListNode(ListRoot root, ProdListNode prod, ushort mentions = 0)
     {
+        _root = root;
         Mentions = mentions;
         Prod = prod;
+    }
+
+    public SpecListNode(ListRoot root, int prod, ushort mentions = 0)
+    {
+        _root = root;
+        Mentions = mentions;
+        ProdIndex = prod;
     }
 
     public SpecListNode GetLastElementInSequence()
@@ -219,15 +367,13 @@ public class SpecListNode
 
     public void Print(int offset)
     {
-        char[] spacing = new char[offset];
-        var span = spacing.AsSpan();
-        span.Fill(' ');
+        string spacing = new('-', offset);
 
         var i = this.Next;       
         while(i is not null)
         {
-            Console.Write(spacing);
-            Console.WriteLine($"{i.Prod, -30}{i.Mentions}");
+            var str = spacing + i.Prod.ToString();
+            Console.WriteLine($"{str, -30}{i.Mentions}");
             
             i.Prod.Spec?.Print(offset + 2);
 
