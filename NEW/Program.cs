@@ -1,8 +1,7 @@
 using System;
-using System.Linq.Expressions;
 
 
-namespace laba1;
+namespace laba1New;
 
 public class Program
 {
