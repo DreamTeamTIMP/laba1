@@ -22,11 +22,9 @@ public static class Constants
     public const int NullPointer = -1;           
 }
 
-// Здесь будут Input? Я могу их добавить ??? ага
-//
 public interface IManage
 {
-    public void Create(string fileName, string specFileName = null);
+    public void Create(string fileName, string? specFileName = null);
     public void AddProduct(string name, string type);
     public void PrintAll();
     public void PrintProducts();
