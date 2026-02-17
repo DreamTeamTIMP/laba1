@@ -72,10 +72,12 @@ public class ProdNodeHelper(byte[] rawProdFileData, byte[] rawSpecFileData)
         }
     }
 
-    public SpecNodeHelper Spec
+    public SpecNodeHelper? Spec
     {
         get
         {
+            if (SpecNodePtr == -1)
+                return null;
             return new SpecNodeHelper(RawProdFileData, RawSpecFileData).SetOffset(SpecNodePtr);
         }
     }
@@ -94,11 +96,13 @@ public class ProdNodeHelper(byte[] rawProdFileData, byte[] rawSpecFileData)
         }
     }
 
-    public ProdNodeHelper Next
+    public ProdNodeHelper? Next
     {
         get
         {
-            return this.SetOffset(NextNodePtr);
+            if (NextNodePtr == -1)
+                return null;
+            return new ProdNodeHelper(RawProdFileData, RawSpecFileData).SetOffset(NextNodePtr);
         }
     }
 
@@ -197,10 +201,12 @@ public class SpecNodeHelper(byte[] rawProdFileData, byte[] rawSpecFileData)
         }
     }
 
-    public ProdNodeHelper Prod
+    public ProdNodeHelper? Prod
     {
         get
         {
+            if (ProdNodePtr == -1)
+                return null;
             return new ProdNodeHelper(RawProdFileData, RawSpecFileData).SetOffset(ProdNodePtr);
         }
     }
@@ -232,11 +238,13 @@ public class SpecNodeHelper(byte[] rawProdFileData, byte[] rawSpecFileData)
         }
     }
 
-    public SpecNodeHelper Next
+    public SpecNodeHelper? Next
     {
         get
         {
-            return this.SetOffset(NextNodePtr);
+            if (NextNodePtr == -1)
+                return null;
+            return new SpecNodeHelper(RawProdFileData, RawSpecFileData).SetOffset(NextNodePtr);
         }
     }
 }
