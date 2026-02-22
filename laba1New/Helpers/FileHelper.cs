@@ -1,498 +1,170 @@
 using System.Buffers.Binary;
+using System.Text;
 
 namespace laba1New.Helpers;
 
-public class ProdNodeHelper(byte[] rawProdFileData, byte[] rawSpecFileData)
+using System.Text;
+
+public class ProdNodeHelper(FileStream stream, int offset, ushort nameSize)
 {
-    readonly private byte[] RawProdFileData = rawProdFileData;
-    readonly private byte[] RawSpecFileData = rawSpecFileData;
-    public int Offset { get; private set; } = 0;
+    private readonly FileStream _stream = stream;
+    public int Offset { get; } = offset;
+    public int TotalSize => 9 + nameSize;
 
-    private int DataSpaceSize => ProdHeaderData.DataSpaceSize(RawProdFileData);
-
-    public void ValidateSpecPtr(int ptr) => PointerHelper.ValidateSpecPtr(ptr, RawSpecFileData);
-    public void ValidateProdPtr(int ptr) => PointerHelper.ValidateProdPtr(ptr, RawProdFileData);
-
-    public ProdNodeHelper SetOffset(int _offset)
-    {
-        if (_offset == -1)
-            throw new ArgumentNullException("Null pointer access. Can't represent node with -1 address");
-        
-        ValidateProdPtr(_offset);
-
-        Offset = _offset;
-        return this;
-    }
-
-    public ProdNodeHelper this [int _offset]
-    {
-        get => SetOffset(_offset);
-    }
+    // Смещение полей относительно начала узла
+    private const int CanBeDelOff = 0;
+    private const int SpecPtrOff = 1;
+    private const int NextPtrOff = 5;
+    private const int NameOff = 9;
 
     public sbyte CanBeDel
     {
-        get 
-        {
-            return (sbyte)RawProdFileData[Offset + ProdNodeOffset.CanBeDel];
-        }
-        set 
-        {
-            RawProdFileData[Offset + ProdNodeOffset.CanBeDel] = (byte)value;
-        }
+        get => ReadSByte(CanBeDelOff);
+        set => WriteSByte(CanBeDelOff, value);
     }
-
     public int SpecNodePtr
     {
-        get
-        {
-            return BinaryPrimitives.ReadInt32LittleEndian(RawProdFileData.AsSpan(Offset + ProdNodeOffset.SpecNodePtr));
-        }
-        set
-        {
-            ValidateSpecPtr(value);
-
-            BinaryPrimitives.WriteInt32LittleEndian(RawProdFileData.AsSpan(Offset + ProdNodeOffset.SpecNodePtr), value);
-        }
+        get => ReadInt(SpecPtrOff);
+        set => WriteInt(SpecPtrOff, value);
     }
-
-    public SpecNodeHelper? Spec
-    {
-        get
-        {
-            if (SpecNodePtr == -1)
-                return null;
-            return new SpecNodeHelper(RawProdFileData, RawSpecFileData).SetOffset(SpecNodePtr);
-        }
-    }
-
     public int NextNodePtr
     {
-        get
-        {
-            return BinaryPrimitives.ReadInt32LittleEndian(RawProdFileData.AsSpan(Offset + ProdNodeOffset.NextNodePtr));
-        }
-        set
-        {
-            ValidateProdPtr(value);
-                
-            BinaryPrimitives.WriteInt32LittleEndian(RawProdFileData.AsSpan(Offset + ProdNodeOffset.NextNodePtr), value);
-        }
+        get => ReadInt(NextPtrOff);
+        set => WriteInt(NextPtrOff, value);
     }
 
-    public ProdNodeHelper? Next
+    public string Name
     {
         get
         {
-            if (NextNodePtr == -1)
-                return null;
-            return new ProdNodeHelper(RawProdFileData, RawSpecFileData).SetOffset(NextNodePtr);
-        }
-    }
-
-    public ReadOnlySpan<byte> Data
-    {
-        get
-        {
-            return RawProdFileData.AsSpan(Offset + ProdNodeOffset.Data, DataSpaceSize);
+            byte[] buf = new byte[nameSize];
+            _stream.Seek(Offset + NameOff, SeekOrigin.Begin);
+            _stream.Read(buf, 0, nameSize);
+            return Encoding.UTF8.GetString(buf).TrimEnd('\0');
         }
         set
         {
-            StringHelper.WriteData(value, RawProdFileData.AsSpan(Offset + ProdNodeOffset.Data, DataSpaceSize));
+            byte[] buf = new byte[nameSize];
+            Encoding.UTF8.GetBytes(value.PadRight(nameSize, '\0')).CopyTo(buf, 0);
+            _stream.Seek(Offset + NameOff, SeekOrigin.Begin);
+            _stream.Write(buf, 0, nameSize);
         }
     }
 
-    public string DataAsString
+    private int ReadInt(int rel)
     {
-        get
-        {
-            return StringHelper.DataToString(Data);
-        }
-        set
-        {
-            StringHelper.StringToData(value, RawProdFileData.AsSpan(Offset + ProdNodeOffset.Data, DataSpaceSize));
-        }
+        _stream.Seek(Offset + rel, SeekOrigin.Begin);
+        byte[] b = new byte[4]; _stream.Read(b, 0, 4);
+        return BitConverter.ToInt32(b, 0);
+    }
+    private void WriteInt(int rel, int val)
+    {
+        _stream.Seek(Offset + rel, SeekOrigin.Begin);
+        _stream.Write(BitConverter.GetBytes(val), 0, 4);
+    }
+    private void WriteSByte(int rel, sbyte val)
+    {
+        _stream.Seek(Offset + rel, SeekOrigin.Begin);
+        _stream.WriteByte((byte)val);
+    }
+    private sbyte ReadSByte(int rel)
+    {
+        _stream.Seek(Offset + rel, SeekOrigin.Begin);
+        return (sbyte)_stream.ReadByte();
     }
 }
 
-public class SpecNodeHelper(byte[] rawProdFileData, byte[] rawSpecFileData)
+public class SpecNodeHelper
 {
-    readonly private byte[] RawProdFileData = rawProdFileData;
-    readonly private byte[] RawSpecFileData = rawSpecFileData;
-    public int Offset { get; private set; } = 0;
+    private readonly FileStream _stream;
+    public int Offset { get; private set; }
 
-    public void ValidateSpecPtr(int ptr) => PointerHelper.ValidateSpecPtr(ptr, RawSpecFileData);
-    public void ValidateProdPtr(int ptr) => PointerHelper.ValidateProdPtr(ptr, RawProdFileData);
+    // Константные смещения внутри узла (всего 11 байт)
+    private const int CanBeDelOff = 0;
+    private const int ProdPtrOff = 1;
+    private const int MentionsOff = 5;
+    private const int NextPtrOff = 7;
 
-    public SpecNodeHelper SetOffset(int _offset)
+    public SpecNodeHelper(FileStream stream, int offset)
     {
-        if (_offset == -1)
-            throw new ArgumentNullException("Null pointer access. Can't represent node with -1 address");
-        
-        ValidateSpecPtr(_offset);
-
-        Offset = _offset;
-        return this;
+        _stream = stream;
+        Offset = offset;
     }
 
-    public SpecNodeHelper this [int _offset]
+    // Позволяет переиспользовать объект для другого смещения (удобно при обходе списка)
+    public SpecNodeHelper SetOffset(int offset)
     {
-        get => SetOffset(_offset);
+        if (offset < 0 && offset != -1)
+            throw new ArgumentOutOfRangeException(nameof(offset));
+        Offset = offset;
+        return this;
     }
 
     public sbyte CanBeDel
     {
-        get 
-        {
-            return (sbyte)RawSpecFileData[Offset + SpecNodeOffset.CanBeDel];
-        }
-        set 
-        {
-            RawSpecFileData[Offset + SpecNodeOffset.CanBeDel] = (byte)value;
-        }
+        get => ReadSByte(CanBeDelOff);
+        set => WriteSByte(CanBeDelOff, value);
     }
 
     public int ProdNodePtr
     {
-        get
-        {
-            return BinaryPrimitives.ReadInt32LittleEndian(RawSpecFileData.AsSpan(Offset + SpecNodeOffset.ProdNodePtr));
-        }
-        set
-        {
-            if (ProdNodePtr == -1)
-                throw new InvalidOperationException("Specification record can't exist without product node");
-            
-            ValidateProdPtr(value);
-
-            BinaryPrimitives.WriteInt32LittleEndian(RawSpecFileData.AsSpan(Offset + SpecNodeOffset.ProdNodePtr), value);
-        }
-    }
-
-    public ProdNodeHelper Prod
-    {
-        get
-        {
-            return new ProdNodeHelper(RawProdFileData, RawSpecFileData).SetOffset(ProdNodePtr);
-        }
+        get => ReadInt(ProdPtrOff);
+        set => WriteInt(ProdPtrOff, value);
     }
 
     public ushort Mentions
     {
-        get
-        {
-            return BinaryPrimitives.ReadUInt16LittleEndian(RawSpecFileData.AsSpan(Offset + SpecNodeOffset.Mentions));
-        }
-
-        set
-        {
-            BinaryPrimitives.WriteUInt16LittleEndian(RawSpecFileData.AsSpan(Offset + SpecNodeOffset.Mentions), value);
-        }
+        get => ReadUInt16(MentionsOff);
+        set => WriteUInt16(MentionsOff, value);
     }
 
     public int NextNodePtr
     {
-        get
-        {
-            return BinaryPrimitives.ReadInt32LittleEndian(RawSpecFileData.AsSpan(Offset + SpecNodeOffset.NextNodePtr));
-        }
-        set
-        {
-            ValidateSpecPtr(value);
-                
-            BinaryPrimitives.WriteInt32LittleEndian(RawSpecFileData.AsSpan(Offset + SpecNodeOffset.NextNodePtr), value);
-        }
+        get => ReadInt(NextPtrOff);
+        set => WriteInt(NextPtrOff, value);
     }
 
-    public SpecNodeHelper? Next
+    #region Приватные методы чтения/записи
+
+    private int ReadInt(int relOffset)
     {
-        get
-        {
-            if (NextNodePtr == -1)
-                return null;
-            return new SpecNodeHelper(RawProdFileData, RawSpecFileData).SetOffset(NextNodePtr);
-        }
+        _stream.Seek(Offset + relOffset, SeekOrigin.Begin);
+        byte[] buffer = new byte[4];
+        _stream.Read(buffer, 0, 4);
+        return BitConverter.ToInt32(buffer, 0);
     }
 
-    public void Print(int offset)
+    private void WriteInt(int relOffset, int value)
     {
-        string spacing = new('-', offset);
-
-        var i = Next;       
-        while(i is not null)
-        {
-            var str = spacing + i.Prod.DataAsString;
-            Console.WriteLine($"{str, -30}{i.Mentions}");
-            
-            i.Prod.Spec?.Print(offset + 2);
-
-            i = i.Next;
-        }
+        _stream.Seek(Offset + relOffset, SeekOrigin.Begin);
+        _stream.Write(BitConverter.GetBytes(value), 0, 4);
     }
-}
 
-public class ProdHeaderHelper(byte[] RawProdFileData, byte[] RawSpecFileData)
-{
-    public void ValidateProdPtr(int ptr) => PointerHelper.ValidateProdPtr(ptr, RawProdFileData);
-
-    public int NodeSize => ProdNodeOffset.TotalOffset(RawProdFileData);
-
-    public ReadOnlySpan<byte> Signature 
+    private ushort ReadUInt16(int relOffset)
     {
-        get
-        {
-            return RawProdFileData.AsSpan(ProdHeaderOffset.Signature, ProdHeaderOffset.CompDataSize);
-        }
-        set 
-        {
-            if (!value.SequenceEqual("PS"u8))
-                throw new ArgumentException("Signature of produts file can be only \"PS\" ");
-            
-            value.CopyTo(RawProdFileData.AsSpan(ProdHeaderOffset.Signature, ProdHeaderOffset.CompDataSize));
-        }
+        _stream.Seek(Offset + relOffset, SeekOrigin.Begin);
+        byte[] buffer = new byte[2];
+        _stream.Read(buffer, 0, 2);
+        return BitConverter.ToUInt16(buffer, 0);
     }
 
-    public ushort CompDataSize
+    private void WriteUInt16(int relOffset, ushort value)
     {
-        get
-        {
-            return BinaryPrimitives.ReadUInt16LittleEndian(RawProdFileData.AsSpan(ProdHeaderOffset.CompDataSize));
-        }
-        set
-        {
-            if (FirstNodePtr != -1 && FreeSpacePtr != ProdHeaderOffset.TotalOffset)
-                throw new InvalidOperationException("CompDataSize can be changed only if file is empty (FirstNodePtr must be -1)");
-            BinaryPrimitives.WriteUInt16LittleEndian(RawProdFileData.AsSpan(ProdHeaderOffset.CompDataSize), value);
-        }
+        _stream.Seek(Offset + relOffset, SeekOrigin.Begin);
+        _stream.Write(BitConverter.GetBytes(value), 0, 2);
     }
 
-    public int FirstNodePtr
+    private sbyte ReadSByte(int relOffset)
     {
-        get
-        {
-            return BinaryPrimitives.ReadInt32LittleEndian(RawProdFileData.AsSpan(ProdHeaderOffset.FirstNodePtr));
-        }
-        set
-        {
-            if (FreeSpacePtr <= value)
-                throw new InvalidOperationException("FirstNodePtr can't be bigget then FreeSpacePtr! If you are adding a node, change the value of FreeSpacePtr first.");
-
-            ValidateProdPtr(value);
-
-            BinaryPrimitives.WriteInt32LittleEndian(RawProdFileData.AsSpan(ProdHeaderOffset.FirstNodePtr), value);
-        }
+        _stream.Seek(Offset + relOffset, SeekOrigin.Begin);
+        return (sbyte)_stream.ReadByte();
     }
 
-    public ProdNodeHelper? FirstNode
+    private void WriteSByte(int relOffset, sbyte value)
     {
-        get
-        {
-            if (FirstNodePtr == -1)
-                return null;
-            return new ProdNodeHelper(RawProdFileData, RawSpecFileData).SetOffset(FirstNodePtr);
-        }
+        _stream.Seek(Offset + relOffset, SeekOrigin.Begin);
+        _stream.WriteByte((byte)value);
     }
 
-    public int FreeSpacePtr
-    {
-        get
-        {
-            return BinaryPrimitives.ReadInt32LittleEndian(RawProdFileData.AsSpan(ProdHeaderOffset.FreeSpacePtr));
-        }
-        set
-        {
-            if (value <= FirstNodePtr)
-                throw new InvalidOperationException($"FreeSpacePtr can't be lower then FirstNodePtr! If you are deleting a node, change the value of FirstNodePtr first.  {value}");
-            if (value == -1)
-                throw new ArgumentNullException("FreeSpacePtr can't be -1!");
-
-            PointerHelper.ValidateProdPtr(value, RawProdFileData, true);
-
-            BinaryPrimitives.WriteInt32LittleEndian(RawProdFileData.AsSpan(ProdHeaderOffset.FreeSpacePtr), value);
-        }
-    }
-
-    private ProdNodeHelper FreeSpaceAsNode
-    {
-        get
-        {
-            return new ProdNodeHelper(RawProdFileData, RawSpecFileData).SetOffset(FreeSpacePtr);
-        }
-    }
-
-    public ProdNodeHelper? GetLastNode()
-    {
-        var node = FirstNode;
-        if (node is null) 
-            return null;
-        
-        while (node.Next is not null)
-        {
-            node = node.Next;
-        }
-
-        return node;
-    }
-
-    public ProdNodeHelper NewNode(string dataAsString)
-    {
-        var newNode = FreeSpaceAsNode;
-        var lastNode = GetLastNode();
-
-        var oldFreeSpacePtr = FreeSpacePtr;        
-        
-        FreeSpacePtr += NodeSize;
-        
-        if (lastNode is not null)
-            lastNode.NextNodePtr = oldFreeSpacePtr;
-
-        newNode.CanBeDel = 0;
-        newNode.SpecNodePtr = -1;
-        newNode.NextNodePtr = -1;
-        newNode.DataAsString = dataAsString;
-
-        if (FirstNodePtr == -1)
-            FirstNodePtr = oldFreeSpacePtr;
-
-        return newNode;
-    }
-
-    // Использовать с осторожностью. Возвращает, меняет имя поля В МАССИВЕ БАЙТОВ не более.
-    public ReadOnlySpan<byte> SpecFileData
-    {
-        get
-        {
-            return RawProdFileData.AsSpan(ProdHeaderOffset.SpecFileName, ProdHeaderData.SpecFileNameLen);
-        }
-        set
-        {
-            StringHelper.WriteData(value, RawProdFileData.AsSpan(ProdHeaderOffset.SpecFileName, ProdHeaderData.SpecFileNameLen));
-        }
-    }
-
-    public string SpecFileName
-    {
-        get
-        {
-            return StringHelper.DataToString(SpecFileData);
-        }
-        set
-        {
-            StringHelper.StringToData(value, RawProdFileData.AsSpan(ProdHeaderOffset.SpecFileName, ProdHeaderData.SpecFileNameLen));
-        }
-    }
-}
-
-public class SpecHeaderHelper(byte[] RawProdFileData, byte[] RawSpecFileData)
-{
-    public void ValidateSpecPtr(int ptr) => PointerHelper.ValidateSpecPtr(ptr, RawSpecFileData);
-    public int NodeSize => SpecNodeOffset.TotalOffset;
-
-    public ReadOnlySpan<byte> Signature 
-    {
-        get
-        {
-            return RawSpecFileData.AsSpan(SpecHeaderOffset.Signature, SpecHeaderOffset.FirstNodePtr);
-        }
-        set 
-        {
-            if (!value.SequenceEqual("PRS"u8))
-                throw new ArgumentException("Signature of specifications file can be only \"PS\" ");
-            
-            value.CopyTo(RawSpecFileData.AsSpan(SpecHeaderOffset.Signature, SpecHeaderOffset.FirstNodePtr));
-        }
-    }
-
-    public int FirstNodePtr
-    {
-        get
-        {
-            return BinaryPrimitives.ReadInt32LittleEndian(RawSpecFileData.AsSpan(SpecHeaderOffset.FirstNodePtr));
-        }
-        set
-        {
-            if (value >= FreeSpacePtr)
-                throw new InvalidOperationException($"FirstNodePtr can't be bigget then FreeSpacePtr! If you are adding a node, change the value of FreeSpacePtr first.  {value}");
-
-            ValidateSpecPtr(value);
-
-            BinaryPrimitives.WriteInt32LittleEndian(RawSpecFileData.AsSpan(SpecHeaderOffset.FirstNodePtr), value);
-        }
-    }
-
-    public SpecNodeHelper? FirstNode
-    {
-        get
-        {
-            if (FirstNodePtr == -1)
-                return null;
-            return new SpecNodeHelper(RawProdFileData, RawSpecFileData).SetOffset(FirstNodePtr);
-        }
-    }
-
-    public int FreeSpacePtr
-    {
-        get
-        {
-            return BinaryPrimitives.ReadInt32LittleEndian(RawSpecFileData.AsSpan(SpecHeaderOffset.FreeSpacePtr));
-        }
-        set
-        {
-            if (FirstNodePtr >= value)
-                throw new InvalidOperationException("FreeSpacePtr can't be lower then FirstNodePtr! If you are deleting a node, change the value of FirstNodePtr first.");
-            if (FreeSpacePtr == -1)
-                throw new ArgumentNullException("FreeSpacePtr can't be -1!");
-
-            PointerHelper.ValidateSpecPtr(value, RawSpecFileData, true);
-
-            BinaryPrimitives.WriteInt32LittleEndian(RawSpecFileData.AsSpan(SpecHeaderOffset.FreeSpacePtr), value);
-        }
-    }
-
-    // Стоит использовать, при создании новых узлов. Но осторожно и внимательно 
-    public SpecNodeHelper FreeSpaceAsNode
-    {
-        get
-        {
-            return new SpecNodeHelper(RawProdFileData, RawSpecFileData).SetOffset(FreeSpacePtr);
-        }
-    }
-
-
-    public SpecNodeHelper NewSpec(ProdNodeHelper prod)
-    {
-        var newSpec = FreeSpaceAsNode;
-        
-        newSpec.CanBeDel = 0;
-        newSpec.ProdNodePtr = prod.Offset;
-        newSpec.Mentions = 0;
-        newSpec.NextNodePtr = -1;
-
-        prod.SpecNodePtr = newSpec.Offset;
-
-        
-        var oldFreeSpacePtr = FreeSpacePtr; 
-        
-        FreeSpacePtr += NodeSize;
-
-        if (FirstNodePtr == -1)
-            FirstNodePtr = oldFreeSpacePtr;
-
-        return newSpec;
-    }
-
-    public SpecNodeHelper NewSpecRecord(SpecNodeHelper lastSpecRecord, ProdNodeHelper comp, ushort mentions)
-    {
-        var newSpecRecord = FreeSpaceAsNode;
-
-        FreeSpacePtr += NodeSize;
-
-        lastSpecRecord.NextNodePtr = newSpecRecord.Offset;
-
-        newSpecRecord.CanBeDel = 0;
-        newSpecRecord.ProdNodePtr = comp.Offset;
-        newSpecRecord.Mentions = mentions;
-        newSpecRecord.NextNodePtr = -1;
-
-        return newSpecRecord;
-    }
+    #endregion
 }

@@ -38,11 +38,15 @@ public static class ProdNodeOffset
 
 public static class SpecHeaderOffset
 {
-    public const int Signature = 0;
-    public const int FirstNodePtr = 3; 
-    public const int FreeSpacePtr = 7;
+    public const int FirstNodePtr = 0;   // смещение указателя на первую запись (4 байта)
+    public const int FreeSpacePtr = 4;   // смещение указателя на свободную область (4 байта)
+    public const int TotalOffset = 8;    // общий размер заголовка
+}
 
-    public const int TotalOffset = 11;
+public static class ComponentTypes
+{
+    public const ushort Product = 0;   // Изделие (корень)
+    public const ushort Node = 65535;      // Узел
 }
 
 public static class SpecNodeOffset

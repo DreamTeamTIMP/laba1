@@ -1,235 +1,220 @@
-using System.Buffers.Binary;
 using laba1New.Helpers;
+using System.Text;
 
-namespace laba1New;
-
-// Насчёт Resize использовать его если и придётся то нужно только через особый метод так как нужно будет обновить prodHeader и specHeader
-
-public class DataManager // : IDisposable позже реализуем 
+public class DataManager : IDisposable
 {
-    private ProdHeaderHelper? prodHeader;
-    private SpecHeaderHelper? specHeader;
+    private FileStream? _prodFs;
+    private FileStream? _specFs;
+    private ushort _nameSize;
 
-    private byte[] _prodData = [];
-    private byte[] _specData = [];
-    private string _prodPath = "";
-    private string _specPath = "";
-
-    public void Create(string name, ushort dataSize = 16, string? specName = null)
+    // --- CREATE ---
+    public void Create(string prodName, ushort dataSize, string? specName = null)
     {
-        specName ??= name;
-        _prodPath = name + ".prd";
-        _specPath = specName + ".prs";
+        specName ??= prodName + ".prs";
+        _prodFs = new FileStream(prodName + ".prd", FileMode.Create);
+        _specFs = new FileStream(specName, FileMode.Create);
 
-        _prodData = new byte[1024 * 32];
-        _specData = new byte[1024 * 32];
+        // Заголовок .prd (28 байт)
+        _prodFs.Write(Encoding.ASCII.GetBytes("PS"), 0, 2);
+        _prodFs.Write(BitConverter.GetBytes(dataSize), 0, 2);
+        _prodFs.Write(BitConverter.GetBytes(-1), 0, 4); // FirstNode
+        _prodFs.Write(BitConverter.GetBytes(28), 0, 4); // FreeSpace
+        byte[] nameBuf = new byte[16];
+        Encoding.ASCII.GetBytes(specName.PadRight(16)).CopyTo(nameBuf, 0);
+        _prodFs.Write(nameBuf, 0, 16);
 
-        prodHeader = new(_prodData, _specData);
-        specHeader = new(_prodData, _specData);
-
-        prodHeader.Signature = "PS"u8;
-        prodHeader.FreeSpacePtr = ProdHeaderOffset.TotalOffset;
-        prodHeader.FirstNodePtr = -1;
-        prodHeader.CompDataSize = dataSize;
-        prodHeader.SpecFileName = name;
-
-        specHeader.Signature = "PRS"u8;
-        specHeader.FirstNodePtr = -1;
-        specHeader.FreeSpacePtr = SpecHeaderOffset.TotalOffset;
-
-        Save();
+        // Заголовок .prs (8 байт)
+        _specFs.Write(BitConverter.GetBytes(-1), 0, 4); // FirstNode
+        _specFs.Write(BitConverter.GetBytes(8), 0, 4);  // FreeSpace
+        _nameSize = dataSize;
     }
 
-    public void Save()
+    // --- INPUT (Тип: Изделие, Узел, Деталь) ---
+    public void AddComponent(string name, string type)
     {
-        File.WriteAllBytes(_prodPath, _prodData);
-        File.WriteAllBytes(_specPath, _specData);
-    }
+        int offset = GetFreeProd();
+        var node = new ProdNodeHelper(_prodFs!, offset, _nameSize);
 
-    public void AddProduct(string name)
-    {
-        if (prodHeader is null || specHeader is null)
-            throw new InvalidOperationException("You must first create or open file");
+        node.CanBeDel = 0;
+        node.Name = name;
+        node.NextNodePtr = GetFirstProd();
 
-        if (FindProduct(name) is not null)
-            throw new ArgumentException("Component with this name already exist!");
-
-        var newNode = prodHeader.NewNode(name);
-        specHeader.NewSpec(newNode);
-        
-        Save();    
-    }
-
-    public void AddDetail(string name)
-    {
-        if (prodHeader is null)
-            throw new InvalidOperationException("You must first create or open file");
-        
-        if (FindProduct(name) is not null)
-            throw new ArgumentException("Component with this name already exist!");
-
-        prodHeader.NewNode(name);
-
-        Save();
-    }
-
-    //public void AddProduct(string name)
-    //{
-    //    int currentFree = ProdHeaderData.FreeSpacePtr(_prodData);
-    //    int recordSize = ProdNodeOffset.TotalOffset(_prodData);
-    //    
-    //    Array.Resize(ref _prodData, currentFree + recordSize);
-//
-    //    var helper = new ProdNodeHelper(_prodData, _specData);
-    //    helper.SetOffset(currentFree);
-//
-    //    helper.CanBeDel = 0;
-    //    helper.SpecNodePtr = -1;
-    //    int oldHead = BinaryPrimitives.ReadInt32LittleEndian(_prodData.AsSpan(ProdHeaderOffset.FirstNodePtr));
-    //    helper.NextNodePtr = oldHead;
-//
-    //    var nameBytes = System.Text.Encoding.Default.GetBytes(name);
-    //    helper.Data = nameBytes;
-//
-    //    BinaryPrimitives.WriteInt32LittleEndian(_prodData.AsSpan(ProdHeaderOffset.FirstNodePtr), currentFree);
-    //    BinaryPrimitives.WriteInt32LittleEndian(_prodData.AsSpan(ProdHeaderOffset.FreeSpacePtr), currentFree + recordSize);
-//
-    //    Save();
-    //}
-
-    public void AddToSpec(string prodName, string compName, ushort mentions)
-    {
-        if (specHeader is null)
-            throw new InvalidOperationException("You must first create or open file");
-
-        if(prodName == compName)
-            throw new ArgumentException("You can't add a component in its own specification");
-
-        var prod = FindProduct(prodName) ?? throw new ArgumentException($"Product with {prodName} name doesn't exist");
-        var comp = FindProduct(compName) ?? throw new ArgumentException($"Component with {compName} name doesn't exist");
-        var specList = prod.Spec ?? throw new ArgumentException("Detail can't have specification!");
-        
-        while (true)
+        // Если Изделие или Узел - резервируем заголовок в .prs
+        // (ТЗ говорит: запись с изделием может порождать новый список)
+        if (type.ToLower() == "деталь")
         {
-            if (specList.ProdNodePtr == comp.Offset)
-                throw new ArgumentException("Product already have this entry in specificication!");
-
-            if (specList.Next != null)
-                specList = specList.Next;
-            else
-                break;
+            node.SpecNodePtr = -1;
+        }
+        else
+        {
+            // Для Изделия/Узла создаем пустую "голову" спецификации
+            node.SpecNodePtr = -1; // Пока компонентов нет, но тип мы запомним в коде
         }
 
-        specHeader.NewSpecRecord(specList, comp, mentions);
+        SetFirstProd(offset);
+        UpdateFreeProd(offset + node.TotalSize);
     }
 
-    public void AddRelation(string ownerName, string partName, ushort count)
+    // --- INPUT (Связь: Родитель/Ребенок) ---
+    public void AddRelation(string parentName, string childName, ushort count = 1)
     {
-        // 1. Найти оффсеты владельца и детали (перебором по NextNodePtr)
-        int ownerOffset = FindProduct(ownerName)?.Offset ?? -1;
-        int partOffset = FindProduct(partName)?.Offset ?? -1;
+        var p = FindNode(parentName);
+        var c = FindNode(childName);
 
-        // 2. Создать новую запись в SpecData
-        int specFree = SpecHeaderData.FreeSpacePtr(_specData);
-        Array.Resize(ref _specData, specFree + SpecNodeOffset.TotalOffset);
+        if (p == null || c == null) throw new Exception("Компонент не найден");
+        if (p.SpecNodePtr == -1 && !IsNodeOrProduct(p))
+            throw new Exception("Деталь не может иметь спецификацию!");
 
-        var specHelper = new SpecNodeHelper(_prodData, _specData);
-        specHelper.SetOffset(specFree);
+        int newSpecOff = GetFreeSpec();
+        var newEntry = new SpecNodeHelper(_specFs!, newSpecOff);
 
-        var prodHelper = new ProdNodeHelper(_prodData, _specData)[ownerOffset];
+        newEntry.CanBeDel = 0;
+        newEntry.ProdNodePtr = c.Offset;
+        newEntry.Mentions = count;
+        newEntry.NextNodePtr = p.SpecNodePtr; // Вставляем в начало списка
 
-        // 3. Настройка связей
-        specHelper.CanBeDel = 0;
-        specHelper.ProdNodePtr = partOffset;
-        specHelper.Mentions = count;
-        specHelper.NextNodePtr = prodHelper.SpecNodePtr; // В начало списка спецификаций изделия
-
-        prodHelper.SpecNodePtr = specFree; // Узел теперь ссылается на новую запись в .prs
-
-        // 4. Обновить заголовок .prs
-        BinaryPrimitives.WriteInt32LittleEndian(_specData.AsSpan(SpecHeaderOffset.FreeSpacePtr), specFree + SpecNodeOffset.TotalOffset);
-
-        Save();
+        p.SpecNodePtr = newSpecOff; // Обновляем голову в .prd
+        UpdateFreeSpec(newSpecOff + 11);
     }
 
+    // --- DELETE (Логическое) ---
+    public void DeleteComponent(string name)
+    {
+        var node = FindNode(name);
+        if (node == null) return;
+
+        // Проверка: нет ли ссылок на него в других спецификациях (требование ТЗ)
+        if (HasReferences(node.Offset))
+            throw new Exception("Ошибка: на компонент есть ссылки в спецификациях!");
+
+        node.CanBeDel = -1;
+    }
+
+    // --- PRINT (*) ---
     public void PrintAll()
     {
-        if (prodHeader is null || specHeader is null)
-            throw new InvalidOperationException("You must first create or open file");
-            
-
-        Console.WriteLine($"{"", 15}{_prodPath}:");
-        Console.WriteLine($"{"DataSpaceSize:", -30}{prodHeader.CompDataSize}B");
-        Console.WriteLine($"{"SpecFileName:", -30}{prodHeader.SpecFileName}");
-        Console.WriteLine($"{"", 15}Products:");
-        Console.WriteLine($"{"Product name", -30}Product Type");
-
-        for (var prod = prodHeader.FirstNode; prod is not null; prod = prod.Next)
+        Console.WriteLine($"{"Наименование",-16} | {"Тип"}");
+        int curr = GetFirstProd();
+        while (curr != -1)
         {
-            if (prod.Spec is not null)
-                Console.WriteLine($"{prod.DataAsString, -30}Node");
-            else
-                Console.WriteLine($"{prod.DataAsString, -30}Detail");
+            var n = new ProdNodeHelper(_prodFs!, curr, _nameSize);
+            if (n.CanBeDel == 0)
+            {
+                string type = n.SpecNodePtr == -1 ? "Деталь" : "Узел/Изделие";
+                Console.WriteLine($"{n.Name,-16} | {type}");
+            }
+            curr = n.NextNodePtr;
+        }
+    }
+    public void PrintComponentTree(string name)
+    {
+        var node = FindNode(name);
+        if (node == null)
+        {
+            Console.WriteLine("Ошибка: Компонент не найден.");
+            return;
         }
 
-        Console.WriteLine("");
-
-        Console.WriteLine($"{"", 15}{_specPath}:");
-        Console.WriteLine($"{"", 15}All spec records:");
-        Console.WriteLine($"{"Spec", -30}Mentions");
-
-        for (var spec = specHeader.FirstNode; spec is not null && spec.Offset < specHeader.FreeSpacePtr; spec.SetOffset(spec.Offset + specHeader.NodeSize))
+        if (node.SpecNodePtr == -1)
         {
+            Console.WriteLine($"Ошибка: {name} является деталью и не имеет спецификации.");
+            return;
+        }
+
+        Console.WriteLine($"\n{node.Name}");
+        PrintRecursive(node.SpecNodePtr, 1);
+    }
+    private void PrintRecursive(int specOffset, int level)
+    {
+        var spec = new SpecNodeHelper(_specFs!, specOffset);
+        int currentEntry = specOffset; // В ТЗ спецификация — это просто список
+
+        while (currentEntry != -1)
+        {
+            spec.SetOffset(currentEntry);
             if (spec.CanBeDel == 0)
-                Console.WriteLine($"{spec.Prod.DataAsString, -30}{spec.Mentions}");
-        }
-        
-        Console.WriteLine("");
-        
-        Console.WriteLine($"{"", 15}Specs:");
+            {
+                var component = new ProdNodeHelper(_prodFs!, spec.ProdNodePtr, _nameSize);
 
-        for (var spec = specHeader.FirstNode; spec is not null && spec.Offset < specHeader.FreeSpacePtr; spec.SetOffset(spec.Offset + specHeader.NodeSize))
-        {
-            if (spec.Mentions != 0)
-                continue;
+                // Рисуем иерархию
+                string indent = new string('|', level).Replace("|", "|   ");
+                Console.WriteLine($"{indent}|");
+                Console.WriteLine($"{indent}┗━ {component.Name} (x{spec.Mentions})");
 
-            Console.WriteLine($"{"", 15}{spec.Prod.DataAsString} spec:");
-            Console.WriteLine($"{"Spec", -30}Mentions");
-
-            spec.Print(0);
-        }
-    }
-
-    public void PrintTree(string name)
-    {
-        int offset = FindProduct(name)?.Offset ?? -1;
-        if (offset == -1) return;
-
-        PrintRecursive(offset, 0);
-    }
-
-    private void PrintRecursive(int prodOffset, int level)
-    {
-        var prod = new ProdNodeHelper(_prodData, _specData)[prodOffset];
-        Console.WriteLine(new string(' ', level * 4) + System.Text.Encoding.Default.GetString(prod.Data.ToArray()).Trim());
-
-        // Идем по цепочке спецификации
-        var currentSpec = prod.Spec;
-        while (currentSpec != null)
-        {
-            PrintRecursive(currentSpec.ProdNodePtr, level + 1);
-            currentSpec = currentSpec.Next;
+                // Если это не деталь, идем глубже
+                if (component.SpecNodePtr != -1)
+                {
+                    PrintRecursive(component.SpecNodePtr, level + 1);
+                }
+            }
+            currentEntry = spec.NextNodePtr;
         }
     }
-
-    private ProdNodeHelper? FindProduct(string NodeName)
+    public ProdNodeHelper? FindNode(string name, bool includeDeleted = false)
     {
-        for (var node = prodHeader?.FirstNode; node is not null; node = node.Next)
+        int curr = GetFirstProd();
+        while (curr != -1)
         {
-            if (node.DataAsString == NodeName)
-                return node;
+            var n = new ProdNodeHelper(_prodFs!, curr, _nameSize);
+            if (n.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+            {
+                if (includeDeleted || n.CanBeDel == 0) return n;
+            }
+            curr = n.NextNodePtr;
         }
-
         return null;
     }
+    public void RestoreAll()
+    {
+        // 1. Снимаем бит удаления везде
+        int curr = 28; // Начало данных в .prd
+        var allNodes = new List<(int offset, string name)>();
+        int freeSpace = GetFreeProd();
+
+        while (curr < freeSpace)
+        {
+            var node = new ProdNodeHelper(_prodFs!, curr, _nameSize);
+            node.CanBeDel = 0; // Снимаем пометку
+            allNodes.Add((curr, node.Name));
+            curr += node.TotalSize;
+        }
+
+        // 2. Сортируем список по алфавиту имен
+        allNodes.Sort((a, b) => string.Compare(a.name, b.name, StringComparison.OrdinalIgnoreCase));
+
+        // 3. Перестраиваем связи NextNodePtr
+        if (allNodes.Count > 0)
+        {
+            SetFirstProd(allNodes[0].offset); // Новый корень списка
+            for (int i = 0; i < allNodes.Count; i++)
+            {
+                var node = new ProdNodeHelper(_prodFs!, allNodes[i].offset, _nameSize);
+                node.NextNodePtr = (i < allNodes.Count - 1) ? allNodes[i + 1].offset : -1;
+            }
+        }
+
+        Console.WriteLine("Все записи восстановлены и отсортированы.");
+    }
+    // Вспомогательные методы чтения указателей из заголовков
+    private int GetFirstProd() { _prodFs!.Seek(4, SeekOrigin.Begin); return ReadInt(_prodFs); }
+    private void SetFirstProd(int v) { _prodFs!.Seek(4, SeekOrigin.Begin); WriteInt(_prodFs, v); }
+    private int GetFreeProd() { _prodFs!.Seek(8, SeekOrigin.Begin); return ReadInt(_prodFs); }
+    private void UpdateFreeProd(int v) { _prodFs!.Seek(8, SeekOrigin.Begin); WriteInt(_prodFs, v); }
+
+    private int GetFreeSpec() { _specFs!.Seek(4, SeekOrigin.Begin); return ReadInt(_specFs); }
+    private void UpdateFreeSpec(int v) { _specFs!.Seek(4, SeekOrigin.Begin); WriteInt(_specFs, v); }
+
+    private int ReadInt(FileStream fs) { byte[] b = new byte[4]; fs.Read(b, 0, 4); return BitConverter.ToInt32(b, 0); }
+    private void WriteInt(FileStream fs, int v) { fs.Write(BitConverter.GetBytes(v), 0, 4); }
+
+    private bool IsNodeOrProduct(ProdNodeHelper n) => n.SpecNodePtr != -1;
+
+    private bool HasReferences(int prodOffset)
+    {
+        // Проход по всему .prs в поисках ProdNodePtr == prodOffset
+        // Реализуется простым перебором файла .prs от заголовка до FreeSpace
+        return false; // Заглушка: нужно реализовать цикл по записям .prs
+    }
+
+    public void Dispose() { _prodFs?.Close(); _specFs?.Close(); }
 }

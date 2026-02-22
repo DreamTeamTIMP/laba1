@@ -37,86 +37,60 @@ public class CLI(DataManager manager)
 
     public bool ParseAndExec()
     {
-        if(input is null)
-            throw new Exception("Incorrect input!");
-        
-        input.ToLower();
-        string[] args = input.Split(' ');
-        int argc = args.Length;
-
+        input = input.Trim().ToLower();
+        string[] args = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (args.Length == 0) return false;
 
         switch (args[0])
         {
             case "create":
-                switch (argc)
-                {
-                    case 1:
-                        throw new Exception("Not enought argumets");
-                    case 2:
-                        manager.Create(args[1], 16, null);
-                        break;
-                    case 3:
-                    case 4:
-                        if (!ushort.TryParse(args[2], out ushort dataSize) || dataSize < 0)
-                            throw new ArgumentException($"Incorrect number. It must be a natural number not exceeding {int.MaxValue}");
-                        if (argc == 3)
-                            manager.Create(args[1], dataSize, null);
-                        else
-                            manager.Create(args[1], dataSize, args[3]);
-                        break;
-                    default:
-                        throw new Exception("To many argumets");
-                }
+                manager.Create(args[1]);
                 break;
             case "input":
-                switch (argc) 
-                {
-                    case 1:
-                    case 2:                        
-                        throw new Exception("Not enought argumets");
-                    case 3:
-                        switch (args[2])
-                        {
-                            case "product":
-                            case "node":
-                                manager.AddProduct(args[1]);
-                                break;
-                            case "detail":
-                                manager.AddDetail(args[1]);
-                                break;        
-                            default:
-                                manager.AddToSpec(args[1], args[2], 1);
-                                break;
-                        }
-                        break;
-                    case 4:
-                        if (!ushort.TryParse(args[3], out ushort mentions)) 
-                            throw new ArgumentException($"Incorrect number. It must be a natural number not exceeding {ushort.MaxValue}");
-                        manager.AddToSpec(args[1], args[2], mentions);
-                        break;    
-
-                    default:
-                        throw new Exception("To many argumets");
-                }
+                // input product <name> | input detail <name>
+                if (args[1] == "product") manager.AddProduct(args[2], true);
+                else if (args[1] == "detail") manager.AddDetail(args[2]);
                 break;
-            
-            case "printall":
+            case "delete":
+                manager.Delete(args[1]);
+                Console.WriteLine("Marked as deleted.");
+                break;
+            case "restore":
+                manager.Restore(args[1]);
+                Console.WriteLine("Restored.");
+                break;
+            case "truncate":
+                manager.Truncate();
+                break;
+            case "print":
                 manager.PrintAll();
                 break;
+            case "open":
+                if (args.Length < 2) throw new Exception("Usage: open <filename>");
+                manager.Open(args[1]);
+                break;
 
-            case "exit":
-                return true;
+            case "delete":
+                if (args.Length < 2) throw new Exception("Usage: delete <name>");
+                manager.Delete(args[1]);
+                break;
+
+            case "restore":
+                if (args.Length < 2) throw new Exception("Usage: restore <name>");
+                manager.Restore(args[1]);
+                break;
+
             case "help":
                 ShowHelp();
                 break;
+            case "exit":
+                return true;
             default:
-                Console.WriteLine("Unknown command. Try help");
+                Console.WriteLine("Unknown command.");
                 break;
         }
-        
         return false;
     }
-
     private void ShowHelp()
     {
         Console.WriteLine($"{"", 15}Help");
