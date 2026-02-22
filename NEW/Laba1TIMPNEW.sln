@@ -1,9 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.14.36603.0 d17.14
+VisualStudioVersion = 17.14.36603.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Laba1TIMPNEW", "Laba1TIMPNEW.csproj", "{3A888D84-3371-E4DF-5856-758E7D394784}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "laba1timp_sem4", "..\laba1timp_sem4\laba1timp_sem4.csproj", "{111EB993-8D3F-4669-AB7F-5F10E7C5E72B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,6 +17,10 @@ Global
 		{3A888D84-3371-E4DF-5856-758E7D394784}.Debug|x86.Build.0 = Debug|x86
 		{3A888D84-3371-E4DF-5856-758E7D394784}.Release|x86.ActiveCfg = Release|x86
 		{3A888D84-3371-E4DF-5856-758E7D394784}.Release|x86.Build.0 = Release|x86
+		{111EB993-8D3F-4669-AB7F-5F10E7C5E72B}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{111EB993-8D3F-4669-AB7F-5F10E7C5E72B}.Debug|x86.Build.0 = Debug|Any CPU
+		{111EB993-8D3F-4669-AB7F-5F10E7C5E72B}.Release|x86.ActiveCfg = Release|Any CPU
+		{111EB993-8D3F-4669-AB7F-5F10E7C5E72B}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
