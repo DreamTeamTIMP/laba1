@@ -105,23 +105,13 @@ public class DataManager // : IDisposable позже реализуем
         if(prodName == compName)
             throw new ArgumentException("You can't add a component in its own specification");
 
-        var prod = FindProduct(prodName);
-        if (prod is null)
-            throw new ArgumentException($"Product with {prodName} name doesn't exist");
-
-        var comp = FindProduct(compName);
-        if (comp is null) 
-            throw new ArgumentException($"Component with {compName} name doesn't exist");
+        var prod = FindProduct(prodName) ?? throw new ArgumentException($"Product with {prodName} name doesn't exist");
+        var comp = FindProduct(compName) ?? throw new ArgumentException($"Component with {compName} name doesn't exist");
+        var specList = prod.Spec ?? throw new ArgumentException("Detail can't have specification!");
         
-        
-        var specList = prod.Spec;
-        if (specList is null)
-            throw new ArgumentException("Detail can't have specification!");
-        
-
         while (true)
         {
-            if (specList.ProdNodePtr == comp.offset)
+            if (specList.ProdNodePtr == comp.Offset)
                 throw new ArgumentException("Product already have this entry in specificication!");
 
             if (specList.Next != null)
@@ -136,8 +126,8 @@ public class DataManager // : IDisposable позже реализуем
     public void AddRelation(string ownerName, string partName, ushort count)
     {
         // 1. Найти оффсеты владельца и детали (перебором по NextNodePtr)
-        int ownerOffset = FindProduct(ownerName)?.offset ?? -1;
-        int partOffset = FindProduct(partName)?.offset ?? -1;
+        int ownerOffset = FindProduct(ownerName)?.Offset ?? -1;
+        int partOffset = FindProduct(partName)?.Offset ?? -1;
 
         // 2. Создать новую запись в SpecData
         int specFree = SpecHeaderData.FreeSpacePtr(_specData);
@@ -188,7 +178,7 @@ public class DataManager // : IDisposable позже реализуем
         Console.WriteLine($"{"", 15}All spec records:");
         Console.WriteLine($"{"Spec", -30}Mentions");
 
-        for (var spec = specHeader.FirstNode; spec is not null && spec.offset < specHeader.FreeSpacePtr; spec.SetOffset(spec.offset + specHeader.NodeSize))
+        for (var spec = specHeader.FirstNode; spec is not null && spec.Offset < specHeader.FreeSpacePtr; spec.SetOffset(spec.Offset + specHeader.NodeSize))
         {
             if (spec.CanBeDel == 0)
                 Console.WriteLine($"{spec.Prod.DataAsString, -30}{spec.Mentions}");
@@ -198,7 +188,7 @@ public class DataManager // : IDisposable позже реализуем
         
         Console.WriteLine($"{"", 15}Specs:");
 
-        for (var spec = specHeader.FirstNode; spec is not null && spec.offset < specHeader.FreeSpacePtr; spec.SetOffset(spec.offset + specHeader.NodeSize))
+        for (var spec = specHeader.FirstNode; spec is not null && spec.Offset < specHeader.FreeSpacePtr; spec.SetOffset(spec.Offset + specHeader.NodeSize))
         {
             if (spec.Mentions != 0)
                 continue;
@@ -212,7 +202,7 @@ public class DataManager // : IDisposable позже реализуем
 
     public void PrintTree(string name)
     {
-        int offset = FindProduct(name)?.offset ?? -1;
+        int offset = FindProduct(name)?.Offset ?? -1;
         if (offset == -1) return;
 
         PrintRecursive(offset, 0);

@@ -1,22 +1,15 @@
 namespace laba1New.Interactive;
 
-public class CLI
+public class CLI(DataManager manager)
 {
     private string input = "";
-    private DataManager Manager;
-
-    private string[][] commandsInfo = [
+    private readonly string[][] commandsInfo = [
         ["create", "bla bla"],
         ["input", "bla bla"],
         ["printall", "bla bla"],
         ["help", "bla bla"],
         ["exit", "bla bla"],
     ];
-
-    public CLI(DataManager manager)
-    {
-        Manager = manager;
-    }
 
     public void Start()
     {
@@ -60,16 +53,16 @@ public class CLI
                     case 1:
                         throw new Exception("Not enought argumets");
                     case 2:
-                        Manager.Create(args[1], 16, null);
+                        manager.Create(args[1], 16, null);
                         break;
                     case 3:
                     case 4:
                         if (!ushort.TryParse(args[2], out ushort dataSize) || dataSize < 0)
                             throw new ArgumentException($"Incorrect number. It must be a natural number not exceeding {int.MaxValue}");
                         if (argc == 3)
-                            Manager.Create(args[1], dataSize, null);
+                            manager.Create(args[1], dataSize, null);
                         else
-                            Manager.Create(args[1], dataSize, args[3]);
+                            manager.Create(args[1], dataSize, args[3]);
                         break;
                     default:
                         throw new Exception("To many argumets");
@@ -86,20 +79,20 @@ public class CLI
                         {
                             case "product":
                             case "node":
-                                Manager.AddProduct(args[1]);
+                                manager.AddProduct(args[1]);
                                 break;
                             case "detail":
-                                Manager.AddDetail(args[1]);
+                                manager.AddDetail(args[1]);
                                 break;        
                             default:
-                                Manager.AddToSpec(args[1], args[2], 1);
+                                manager.AddToSpec(args[1], args[2], 1);
                                 break;
                         }
                         break;
                     case 4:
                         if (!ushort.TryParse(args[3], out ushort mentions)) 
                             throw new ArgumentException($"Incorrect number. It must be a natural number not exceeding {ushort.MaxValue}");
-                        Manager.AddToSpec(args[1], args[2], mentions);
+                        manager.AddToSpec(args[1], args[2], mentions);
                         break;    
 
                     default:
@@ -108,7 +101,7 @@ public class CLI
                 break;
             
             case "printall":
-                Manager.PrintAll();
+                manager.PrintAll();
                 break;
 
             case "exit":

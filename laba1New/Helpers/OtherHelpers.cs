@@ -31,28 +31,33 @@ public static class StringHelper
 
 public static class PointerHelper
 {
-    public static  void ValidateSpecPtr(int ptr, byte[] RawSpecFileData)
+    public static  void ValidateSpecPtr(int ptr, byte[] RawSpecFileData, bool skipSpecFreeSpacePtr = false)
     {
         if (ptr == -1) return;
 
         if (ptr + SpecNodeOffset.TotalOffset > RawSpecFileData.Length)
             throw new IndexOutOfRangeException("(pointer + node_size) out of array. Probably you must resize array, don't forget update all links");
 
-        if (ptr < -1)
+        int SpecFreeSpacePtr = SpecHeaderData.FreeSpacePtr(RawSpecFileData);
+
+        if (ptr < -1 || (ptr > SpecFreeSpacePtr && !skipSpecFreeSpacePtr))
             throw new InvalidOperationException("Incorrect pointer!");
 
         if ((ptr - SpecHeaderOffset.TotalOffset) % SpecNodeOffset.TotalOffset != 0)
             throw new ArgumentException("Invalid pointer alignment. The pointer must be exactly at the start of a node.");
     }
 
-    public static void ValidateProdPtr(int ptr, byte[] RawProdFileData)
+    public static void ValidateProdPtr(int ptr, byte[] RawProdFileData, bool skipSpecFreeSpacePtr = false)
     {
         if (ptr == -1) return;
         
         if (ptr + ProdNodeOffset.TotalOffset(RawProdFileData) > RawProdFileData.Length)
             throw new IndexOutOfRangeException("(pointer + node_size) out of array. Probably you must resize array, don't forget update all links");
 
-        if (ptr < -1)
+        
+        int SpecFreeSpacePtr = ProdHeaderData.FreeSpacePtr(RawProdFileData);
+
+        if (ptr < -1 || (ptr > SpecFreeSpacePtr && !skipSpecFreeSpacePtr))
             throw new InvalidOperationException("Incorrect pointer!");
 
         if ((ptr - ProdHeaderOffset.TotalOffset) % ProdNodeOffset.TotalOffset(RawProdFileData) != 0)
