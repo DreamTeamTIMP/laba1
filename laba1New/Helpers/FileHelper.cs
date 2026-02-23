@@ -9,71 +9,63 @@ public class ProdNodeHelper(FileStream stream, int offset, ushort nameSize)
 {
     private readonly FileStream _stream = stream;
     public int Offset { get; } = offset;
-    public int TotalSize => 9 + nameSize;
 
-    // Смещение полей относительно начала узла
-    private const int CanBeDelOff = 0;
-    private const int SpecPtrOff = 1;
-    private const int NextPtrOff = 5;
-    private const int NameOff = 9;
+    // Размер записи: 1 (canBeDel) + 1 (type) + 4 (spec) + 4 (next) + nameSize
+    public int TotalSize => 10 + nameSize;
 
+    // Бит удаления (смещение 0)
     public sbyte CanBeDel
     {
-        get => ReadSByte(CanBeDelOff);
-        set => WriteSByte(CanBeDelOff, value);
-    }
-    public int SpecNodePtr
-    {
-        get => ReadInt(SpecPtrOff);
-        set => WriteInt(SpecPtrOff, value);
-    }
-    public int NextNodePtr
-    {
-        get => ReadInt(NextPtrOff);
-        set => WriteInt(NextPtrOff, value);
+        get => ReadSByte(0);
+        set => WriteSByte(0, value);
     }
 
+    // Тип компонента (смещение 1)
+    public byte Type
+    {
+        get => (byte)ReadSByte(1);
+        set => WriteSByte(1, (sbyte)value);
+    }
+
+    // Указатель на спецификацию (смещение 2)
+    public int SpecNodePtr
+    {
+        get => ReadInt(2);
+        set => WriteInt(2, value);
+    }
+
+    // Указатель на следующий узел (смещение 6)
+    public int NextNodePtr
+    {
+        get => ReadInt(6);
+        set => WriteInt(6, value);
+    }
+
+    // Имя компонента (смещение 10)
     public string Name
     {
         get
         {
-            byte[] buf = new byte[nameSize];
-            _stream.Seek(Offset + NameOff, SeekOrigin.Begin);
-            _stream.Read(buf, 0, nameSize);
-            return Encoding.UTF8.GetString(buf).TrimEnd('\0');
+            byte[] b = new byte[nameSize];
+            _stream.Seek(Offset + 10, SeekOrigin.Begin);
+            _stream.Read(b, 0, nameSize);
+            return Encoding.UTF8.GetString(b).TrimEnd(' ', '\0');
         }
         set
         {
-            byte[] buf = new byte[nameSize];
-            Encoding.UTF8.GetBytes(value.PadRight(nameSize, '\0')).CopyTo(buf, 0);
-            _stream.Seek(Offset + NameOff, SeekOrigin.Begin);
-            _stream.Write(buf, 0, nameSize);
+            byte[] b = new byte[nameSize];
+            Encoding.UTF8.GetBytes(value.PadRight(nameSize, ' ')).CopyTo(b, 0);
+            _stream.Seek(Offset + 10, SeekOrigin.Begin);
+            _stream.Write(b, 0, nameSize);
         }
     }
 
-    private int ReadInt(int rel)
-    {
-        _stream.Seek(Offset + rel, SeekOrigin.Begin);
-        byte[] b = new byte[4]; _stream.Read(b, 0, 4);
-        return BitConverter.ToInt32(b, 0);
-    }
-    private void WriteInt(int rel, int val)
-    {
-        _stream.Seek(Offset + rel, SeekOrigin.Begin);
-        _stream.Write(BitConverter.GetBytes(val), 0, 4);
-    }
-    private void WriteSByte(int rel, sbyte val)
-    {
-        _stream.Seek(Offset + rel, SeekOrigin.Begin);
-        _stream.WriteByte((byte)val);
-    }
-    private sbyte ReadSByte(int rel)
-    {
-        _stream.Seek(Offset + rel, SeekOrigin.Begin);
-        return (sbyte)_stream.ReadByte();
-    }
+    // Вспомогательные методы для чтения/записи
+    private int ReadInt(int rel) { _stream.Seek(Offset + rel, SeekOrigin.Begin); byte[] b = new byte[4]; _stream.Read(b, 0, 4); return BitConverter.ToInt32(b, 0); }
+    private void WriteInt(int rel, int v) { _stream.Seek(Offset + rel, SeekOrigin.Begin); _stream.Write(BitConverter.GetBytes(v), 0, 4); }
+    private void WriteSByte(int rel, sbyte v) { _stream.Seek(Offset + rel, SeekOrigin.Begin); _stream.WriteByte((byte)v); }
+    private sbyte ReadSByte(int rel) { _stream.Seek(Offset + rel, SeekOrigin.Begin); return (sbyte)_stream.ReadByte(); }
 }
-
 public class SpecNodeHelper
 {
     private readonly FileStream _stream;

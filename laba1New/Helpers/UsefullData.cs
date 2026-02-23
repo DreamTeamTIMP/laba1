@@ -29,11 +29,12 @@ public static class ProdHeaderOffset
 public static class ProdNodeOffset
 {
     public const int CanBeDel = 0;
-    public const int SpecNodePtr = 1;
-    public const int NextNodePtr = 5;
-    public const int Data = 9;
+    public const int Type = 1;               // новое поле
+    public const int SpecNodePtr = 2;
+    public const int NextNodePtr = 6;
+    public const int Data = 10;
 
-    public static int TotalOffset(byte[] prodFileData) => 9 + ProdHeaderData.DataSpaceSize(prodFileData);
+    public static int TotalOffset(byte[] prodFileData) => 10 + ProdHeaderData.DataSpaceSize(prodFileData);
 }
 
 public static class SpecHeaderOffset
@@ -45,10 +46,10 @@ public static class SpecHeaderOffset
 
 public static class ComponentTypes
 {
-    public const ushort Product = 0;   // Изделие (корень)
-    public const ushort Node = 65535;      // Узел
+    public const byte Product = 0;   // Изделие
+    public const byte Node = 1;      // Узел
+    public const byte Detail = 2;    // Деталь
 }
-
 public static class SpecNodeOffset
 {
     public const int CanBeDel = 0;

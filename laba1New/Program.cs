@@ -1,7 +1,6 @@
 using System;
 using System.Text;
 
-using laba1New.Interactive;
 
 namespace laba1New;
 
@@ -9,14 +8,7 @@ public class Program
 {
     static public int Main()
     {
-        Console.WriteLine("Hello World!");
-        
-        DataManager manager = new();
-
-        CLI cli = new(manager);
-
-        cli.Start();
-        
+        CLI.Run();
         return 0;
     }
 }
