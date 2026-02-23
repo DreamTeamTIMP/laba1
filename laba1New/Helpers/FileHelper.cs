@@ -5,13 +5,13 @@ namespace laba1New.Helpers;
 
 using System.Text;
 
-public class ProdNodeHelper(FileStream stream, int offset, ushort nameSize)
+public class ProdNodeHelper(FileStream stream, int offset, ushort _nameSize)
 {
     private readonly FileStream _stream = stream;
     public int Offset { get; } = offset;
 
     // Размер записи: 1 (canBeDel) + 1 (type) + 4 (spec) + 4 (next) + nameSize
-    public int TotalSize => 10 + nameSize;
+    public int TotalSize => 10 + _nameSize;
 
     // Бит удаления (смещение 0)
     public sbyte CanBeDel
@@ -42,21 +42,28 @@ public class ProdNodeHelper(FileStream stream, int offset, ushort nameSize)
     }
 
     // Имя компонента (смещение 10)
+    private static readonly Encoding NameEncoding = Encoding.GetEncoding(1251);
+
     public string Name
     {
         get
         {
-            byte[] b = new byte[nameSize];
+            byte[] b = new byte[_nameSize];
             _stream.Seek(Offset + 10, SeekOrigin.Begin);
-            _stream.Read(b, 0, nameSize);
-            return Encoding.UTF8.GetString(b).TrimEnd(' ', '\0');
+            _stream.Read(b, 0, _nameSize);
+            return NameEncoding.GetString(b).TrimEnd(' ', '\0');
         }
         set
         {
-            byte[] b = new byte[nameSize];
-            Encoding.UTF8.GetBytes(value.PadRight(nameSize, ' ')).CopyTo(b, 0);
+            byte[] b = new byte[_nameSize];
+            byte[] src = NameEncoding.GetBytes(value);
+            if (src.Length > _nameSize)
+                throw new ArgumentException($"Имя слишком длинное (макс. {_nameSize} байт)");
+            Array.Copy(src, b, src.Length);
+            // Заполняем остаток пробелами (код 32)
+            for (int i = src.Length; i < _nameSize; i++) b[i] = 32;
             _stream.Seek(Offset + 10, SeekOrigin.Begin);
-            _stream.Write(b, 0, nameSize);
+            _stream.Write(b, 0, _nameSize);
         }
     }
 

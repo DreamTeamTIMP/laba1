@@ -25,7 +25,6 @@ namespace laba1New
                 }
                 catch (Exception ex)
                 {
-                    // ТЗ: После сообщения об ошибке выводится PS>
                     Console.WriteLine($"Ошибка: {ex.Message}");
                 }
             }
@@ -33,20 +32,19 @@ namespace laba1New
 
         static void ProcessCommand(DataManager manager, string input)
         {
-            // Регулярки для парсинга команд согласно ТЗ
             if (Regex.IsMatch(input, @"^Create\s+", RegexOptions.IgnoreCase))
                 HandleCreate(manager, input);
             else if (Regex.IsMatch(input, @"^Open\s+", RegexOptions.IgnoreCase))
                 HandleOpen(manager, input);
-            else if (Regex.IsMatch(input, @"^Input\s*", RegexOptions.IgnoreCase))
+            else if (Regex.IsMatch(input, @"^Input\s+", RegexOptions.IgnoreCase))
                 HandleInput(manager, input);
-            else if (Regex.IsMatch(input, @"^Delete\s*", RegexOptions.IgnoreCase))
+            else if (Regex.IsMatch(input, @"^Delete\s+", RegexOptions.IgnoreCase))
                 HandleDelete(manager, input);
-            else if (Regex.IsMatch(input, @"^Restore\s*", RegexOptions.IgnoreCase))
+            else if (Regex.IsMatch(input, @"^Restore\s+", RegexOptions.IgnoreCase))
                 HandleRestore(manager, input);
             else if (input.Equals("Truncate", StringComparison.OrdinalIgnoreCase))
                 manager.Truncate();
-            else if (Regex.IsMatch(input, @"^Print\s*", RegexOptions.IgnoreCase))
+            else if (Regex.IsMatch(input, @"^Print\s+", RegexOptions.IgnoreCase))
                 HandlePrint(manager, input);
             else if (Regex.IsMatch(input, @"^Help", RegexOptions.IgnoreCase))
                 HandleHelp(manager, input);
@@ -56,19 +54,20 @@ namespace laba1New
 
         static void HandleCreate(DataManager manager, string input)
         {
-            // Формат: Create имя(размер[, спецификация])
-            var match = Regex.Match(input, @"^Create\s+([^(\s]+)\s*\((\d+)(?:\s*,\s*([^)]+))?\)", RegexOptions.IgnoreCase);
-            if (!match.Success) throw new Exception("Формат: Create имя_файла(макс_длина_имени[, имя_спец])");
+            // Новый формат: Create имяфайла максдлина [имяспец]
+            var match = Regex.Match(input, @"^Create\s+(\S+)\s+(\d+)(?:\s+(\S+))?", RegexOptions.IgnoreCase);
+            if (!match.Success)
+                throw new Exception("Формат: Create имя_файла макс_длина_имени [имя_файла_спецификации]");
 
             string prodName = match.Groups[1].Value;
             ushort dataSize = ushort.Parse(match.Groups[2].Value);
-            string? specName = match.Groups[3].Success ? match.Groups[3].Value.Trim() : null;
+            string? specName = match.Groups[3].Success ? match.Groups[3].Value : null;
+
             if (specName != null && !specName.EndsWith(".prs")) specName += ".prs";
             string fullPath = prodName.EndsWith(".prd") ? prodName : prodName + ".prd";
 
             if (File.Exists(fullPath))
             {
-                // ТЗ: Проверка сигнатуры перед подтверждением
                 if (!CheckSignature(fullPath))
                     throw new Exception("Сигнатура существующего файла не соответствует заданию.");
 
@@ -89,67 +88,92 @@ namespace laba1New
 
         static void HandleInput(DataManager manager, string input)
         {
-            // Вариант 1: (имя, тип)
-            var matchComp = Regex.Match(input, @"Input\s*\(\s*([^,)]+)\s*,\s*([^)]+)\s*\)", RegexOptions.IgnoreCase);
-            if (matchComp.Success)
-            {
-                manager.AddComponent(matchComp.Groups[1].Value.Trim(), matchComp.Groups[2].Value.Trim());
-                return;
-            }
+            // Удаляем "Input" из начала строки
+            string args = input.Substring(5).Trim();
 
-            // Вариант 2: (родитель/ребенок)
-            var matchRel = Regex.Match(input, @"Input\s*\(\s*([^/)]+)\s*/\s*([^)]+)\s*\)", RegexOptions.IgnoreCase);
-            if (matchRel.Success)
+            // Проверяем, содержит ли аргумент "/" (это связь родитель/ребенок)
+            if (args.Contains('/'))
             {
-                manager.AddRelation(matchRel.Groups[1].Value.Trim(), matchRel.Groups[2].Value.Trim());
-                return;
-            }
+                // Формат: Input родитель/ребенок [количество]
+                var parts = args.Split(new[] { '/', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 2) throw new Exception("Формат: Input родитель/ребенок [количество]");
 
-            throw new Exception("Неверный формат Input. Ожидается (имя, тип) или (родитель/ребенок)");
+                string parent = parts[0].Trim();
+                string child = parts[1].Trim();
+                ushort count = 1;
+
+                if (parts.Length >= 3 && ushort.TryParse(parts[2], out ushort parsedCount))
+                    count = parsedCount;
+
+                manager.AddRelation(parent, child, count);
+            }
+            else
+            {
+                // Формат: Input имя тип
+                var parts = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 2) throw new Exception("Формат: Input имя тип (Изделие/Узел/Деталь)");
+
+                string name = parts[0].Trim();
+                string type = string.Join(" ", parts.Skip(1)).Trim(); // на случай "тип из двух слов"
+
+                manager.AddComponent(name, type);
+            }
         }
 
         static void HandleDelete(DataManager manager, string input)
         {
-            var matchRel = Regex.Match(input, @"Delete\s*\(\s*([^/)]+)\s*/\s*([^)]+)\s*\)", RegexOptions.IgnoreCase);
-            if (matchRel.Success)
-            {
-                manager.DeleteRelation(matchRel.Groups[1].Value.Trim(), matchRel.Groups[2].Value.Trim());
-                return;
-            }
+            // Удаляем "Delete" из начала строки
+            string args = input.Substring(6).Trim();
 
-            var matchComp = Regex.Match(input, @"Delete\s*\(\s*([^)]+)\s*\)", RegexOptions.IgnoreCase);
-            if (matchComp.Success)
+            // Проверяем, содержит ли аргумент "/" (это связь родитель/ребенок)
+            if (args.Contains('/'))
             {
-                manager.DeleteComponent(matchComp.Groups[1].Value.Trim());
-                return;
+                // Формат: Delete родитель/ребенок
+                var parts = args.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 2) throw new Exception("Формат: Delete родитель/ребенок");
+
+                manager.DeleteRelation(parts[0].Trim(), parts[1].Trim());
             }
-            throw new Exception("Неверный формат Delete.");
+            else
+            {
+                // Формат: Delete имя
+                if (string.IsNullOrEmpty(args)) throw new Exception("Формат: Delete имя_компонента");
+                manager.DeleteComponent(args);
+            }
         }
 
         static void HandleRestore(DataManager manager, string input)
         {
-            var match = Regex.Match(input, @"Restore\s*\(\s*([^)]+)\s*\)", RegexOptions.IgnoreCase);
-            if (!match.Success) throw new Exception("Формат: Restore (имя) или Restore (*)");
+            // Удаляем "Restore" из начала строки
+            string param = input.Substring(7).Trim();
 
-            string param = match.Groups[1].Value.Trim();
-            if (param == "*") manager.RestoreAll();
-            else manager.Restore(param);
+            if (string.IsNullOrEmpty(param))
+                throw new Exception("Формат: Restore имя или Restore *");
+
+            if (param == "*")
+                manager.RestoreAll();
+            else
+                manager.Restore(param);
         }
 
         static void HandlePrint(DataManager manager, string input)
         {
-            var match = Regex.Match(input, @"Print\s*\(\s*([^)]+)\s*\)", RegexOptions.IgnoreCase);
-            if (!match.Success) throw new Exception("Формат: Print (имя) или Print (*)");
+            // Удаляем "Print" из начала строки
+            string param = input.Substring(5).Trim();
 
-            string param = match.Groups[1].Value.Trim();
-            if (param == "*") manager.PrintAll();
-            else manager.PrintComponentTree(param);
+            if (string.IsNullOrEmpty(param))
+                throw new Exception("Формат: Print имя или Print *");
+
+            if (param == "*")
+                manager.PrintAll();
+            else
+                manager.PrintComponentTree(param);
         }
 
         static void HandleHelp(DataManager manager, string input)
         {
-            var match = Regex.Match(input, @"Help\s*(.+)?", RegexOptions.IgnoreCase);
-            string? fileName = match.Groups[1].Success ? match.Groups[1].Value.Trim() : null;
+            // Удаляем "Help" из начала строки
+            string fileName = input.Length > 4 ? input.Substring(4).Trim() : "";
 
             if (!string.IsNullOrEmpty(fileName))
             {
@@ -160,7 +184,8 @@ namespace laba1New
                 Console.SetOut(oldOut);
                 Console.WriteLine($"Справка сохранена в {fileName}");
             }
-            else manager.Help();
+            else
+                manager.Help();
         }
 
         private static bool CheckSignature(string path)

@@ -10,6 +10,9 @@ public partial class DataManager : IDisposable
     //  CREATE 
     public void Create(string prodName, ushort dataSize, string? specName = null)
     {
+        _prodFs?.Close();
+        _specFs?.Close();
+
         specName ??= prodName + ".prs";
         if (specName.Length > 16)
             throw new ArgumentException("Имя файла спецификации не может быть длиннее 16 символов.");
@@ -29,15 +32,29 @@ public partial class DataManager : IDisposable
         // Заголовок .prs (8 байт)
         _specFs.Write(BitConverter.GetBytes(-1), 0, 4); // FirstNode
         _specFs.Write(BitConverter.GetBytes(8), 0, 4);  // FreeSpace
+        
+        // Принудительно сбрасываем буферы на диск
+        _prodFs.Flush();
+        _specFs.Flush();
         _nameSize = dataSize;
     }
+
     //  OPEN 
     public void Open(string prodPath)
     {
+
         if (!prodPath.EndsWith(".prd")) prodPath += ".prd";
         if (!File.Exists(prodPath)) throw new Exception("Файл не найден.");
-
-        _prodFs = new FileStream(prodPath, FileMode.Open, FileAccess.ReadWrite);
+        try
+        {
+            using (var fs = File.Open(prodPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            { }
+            _prodFs = new FileStream(prodPath, FileMode.Open, FileAccess.ReadWrite);
+        }
+        catch (IOException)
+        {
+            throw new InvalidOperationException($"Файл {prodPath} уже открыт.");
+        }
 
         // Проверка сигнатуры
         byte[] sig = new byte[2];
@@ -64,14 +81,17 @@ public partial class DataManager : IDisposable
 
         _specFs = new FileStream(specPath, FileMode.Open, FileAccess.ReadWrite);
 
+
+
         Console.WriteLine($"База {prodPath} открыта.");
     }
+
     //  INPUT (Тип: Изделие, Узел, Деталь) 
     public void AddComponent(string name, string typeStr)
     {
         if (FindNode(name, includeDeleted: true) != null)
             throw new Exception("Ошибка: Компонент с таким именем уже существует.");
-        if (name.Length > _nameSize)
+        if (Encoding.GetEncoding(1251).GetByteCount(name) > _nameSize)
             throw new ArgumentException($"Имя компонента не может быть длиннее {_nameSize} символов.");
         byte type = typeStr.ToLower() switch
         {
@@ -93,6 +113,7 @@ public partial class DataManager : IDisposable
         SetFirstProd(offset);
         UpdateFreeProd(offset + node.TotalSize);
     }
+
     //  INPUT (Связь: Родитель/Ребенок) 
     public void AddRelation(string parentName, string childName, ushort count = 1)
     {
@@ -107,11 +128,12 @@ public partial class DataManager : IDisposable
         // Вызов основной логики по смещениям
         AddRelation(parent.Offset, child.Offset, count);
     }
+
+    //  INPUT (Связь: Родитель/Ребенок) Перегрузка для смещений
     public void AddRelation(int parentOffset, int childOffset, ushort count = 1)
     {
         if (count == 0)
             throw new ArgumentException("Кратность вхождения должна быть больше нуля.");
-
         if (parentOffset == childOffset)
             throw new InvalidOperationException("Нельзя включить компонент в самого себя.");
 
@@ -120,55 +142,31 @@ public partial class DataManager : IDisposable
 
         if (parent.CanBeDel != 0 || child.CanBeDel != 0)
             throw new Exception("Один из компонентов помечен на удаление.");
-
         if (parent.Type == ComponentTypes.Detail)
             throw new Exception("Деталь не может иметь спецификацию!");
-
-
-        // Проверка на циклическую ссылку: не является ли родитель потомком ребёнка?
         if (IsAncestor(parentOffset, childOffset))
-            throw new InvalidOperationException("Обнаружена циклическая ссылка: компонент не может быть потомком самого себя.");
+            throw new InvalidOperationException("Обнаружена циклическая ссылка.");
+
+        // Проверка на дубликат: если такая связь уже есть, увеличиваем кратность
+        int cur = parent.SpecNodePtr;
+        while (cur != -1)
+        {
+            var existing = new SpecNodeHelper(_specFs!, cur);
+            if (existing.CanBeDel == 0 && existing.ProdNodePtr == childOffset)
+            {
+                existing.Mentions += count;
+                return; // ничего больше не делаем
+            }
+            cur = existing.NextNodePtr;
+        }
 
         int newSpecOff = GetFreeSpec();
         var newEntry = new SpecNodeHelper(_specFs!, newSpecOff);
-
         newEntry.CanBeDel = 0;
         newEntry.ProdNodePtr = childOffset;
         newEntry.Mentions = count;
-
-        // Вставка в подсписок родителя
-        int oldFirstSpec = parent.SpecNodePtr;
-        newEntry.NextNodePtr = oldFirstSpec; // временно связываем с бывшим первым
-
-        // Вставка в общий список
-        int firstSpec = GetFirstSpec();
-        if (oldFirstSpec != -1)
-        {
-            // Ищем предшественника oldFirstSpec в общем списке
-            int prev = FindPrevSpecInGlobalList(oldFirstSpec);
-            if (prev == -1)
-            {
-                // oldFirstSpec был первым в общем списке
-                SetFirstSpec(newSpecOff);
-            }
-            else
-            {
-                // перенаправляем предыдущий на новую запись
-                var prevSpec = new SpecNodeHelper(_specFs!, prev);
-                prevSpec.NextNodePtr = newSpecOff;
-            }
-        }
-        else
-        {
-            // У родителя не было спецификаций, вставляем новую запись в начало общего списка
-            newEntry.NextNodePtr = firstSpec;
-            SetFirstSpec(newSpecOff);
-        }
-
-        // Обновляем указатель родителя на первую запись его подсписка
+        newEntry.NextNodePtr = parent.SpecNodePtr; // в начало подсписка
         parent.SpecNodePtr = newSpecOff;
-
-        // Обновляем free space
         UpdateFreeSpec(newSpecOff + 11);
     }
 
@@ -183,6 +181,7 @@ public partial class DataManager : IDisposable
 
         node.CanBeDel = -1;
     }
+
     //  DELETE (Удаление связи из спецификации) 
     public void DeleteRelation(string parentName, string childName)
     {
@@ -204,6 +203,7 @@ public partial class DataManager : IDisposable
         }
         throw new Exception("Такая связь не найдена");
     }
+    
     //  RESTORE (для всех) 
     public void RestoreAll()
     {
@@ -226,6 +226,7 @@ public partial class DataManager : IDisposable
         ReorderAll();
         Console.WriteLine("Все записи восстановлены и отсортированы.");
     }
+    
     //  RESTORE (для конкретного компонента) 
     public void Restore(string name)
     {
@@ -248,6 +249,7 @@ public partial class DataManager : IDisposable
             curr = spec.NextNodePtr;
         }
     }
+    
     //  Перестроение алфавитного порядка всех активных записей .prd 
     private void ReorderAll()
     {
@@ -276,31 +278,27 @@ public partial class DataManager : IDisposable
             SetFirstProd(-1);
         }
     }
+    
     //  TRUNCATE (физическое удаление) 
     public void Truncate()
     {
-        // 1. Сохраняем параметры
+        // 1. Сохраняем старые границы файлов
         int oldFreeProd = GetFreeProd();
         int oldFreeSpec = GetFreeSpec();
-        int oldFirstProd = GetFirstProd();
-        // oldFirstSpec не нужен
 
-        // 2. Читаем все компоненты из .prd (активные)
-        List<(int oldOffset, byte type, int oldSpecPtr, string name)> activeComps = new();
-        Dictionary<int, byte[]> compRawData = new(); // если нужно сохранить все поля, но можно просто читать через helper
+        // 2. Собираем все активные компоненты из .prd
+        var activeComps = new List<(int oldOffset, byte type, int oldSpecPtr, string name)>();
         int curr = 28;
         while (curr < oldFreeProd)
         {
             var node = new ProdNodeHelper(_prodFs!, curr, _nameSize);
             if (node.CanBeDel == 0)
-            {
                 activeComps.Add((curr, node.Type, node.SpecNodePtr, node.Name));
-            }
             curr += node.TotalSize;
         }
 
-        // 3. Создаем маппинг старых смещений компонентов на новые
-        Dictionary<int, int> oldToNewComp = new();
+        // 3. Маппинг старых смещений компонентов на новые
+        var oldToNewComp = new Dictionary<int, int>();
         int newCompOffset = 28;
         int compSize = 10 + _nameSize;
         foreach (var comp in activeComps)
@@ -310,8 +308,7 @@ public partial class DataManager : IDisposable
         }
 
         // 4. Читаем все записи спецификаций из .prs
-        // Сначала прочитаем все записи (и активные, и неактивные) в словарь для навигации
-        Dictionary<int, (sbyte canBeDel, int prodPtr, ushort mentions, int nextPtr)> allSpecs = new();
+        var allSpecs = new Dictionary<int, (sbyte canBeDel, int prodPtr, ushort mentions, int nextPtr)>();
         curr = 8;
         while (curr < oldFreeSpec)
         {
@@ -320,143 +317,145 @@ public partial class DataManager : IDisposable
             curr += 11;
         }
 
-        // 5. Для каждого активного компонента строим цепочку активных записей спецификации
-        Dictionary<int, List<int>> compToSpecs = new(); // ключ - старый offset компонента
+        // 5. Для каждого активного компонента собираем цепочки активных записей спецификации,
+        //    которые ссылаются на активные компоненты
+        var compToSpecs = new Dictionary<int, List<int>>(); // ключ – старый offset компонента
         foreach (var comp in activeComps)
         {
-            List<int> specOffsets = new();
+            var specOffsets = new List<int>();
             int curSpec = comp.oldSpecPtr;
             while (curSpec != -1)
             {
-                if (allSpecs.TryGetValue(curSpec, out var specData))
+                if (allSpecs.TryGetValue(curSpec, out var specData) &&
+                    specData.canBeDel == 0 &&
+                    oldToNewComp.ContainsKey(specData.prodPtr))
                 {
-                    // Проверяем, активна ли запись и ссылается ли на активный компонент
-                    if (specData.canBeDel == 0 && oldToNewComp.ContainsKey(specData.prodPtr))
-                    {
-                        specOffsets.Add(curSpec);
-                    }
-                    // Переходим к следующей по цепочке (даже если текущая не активна, используем её nextPtr)
-                    curSpec = specData.nextPtr;
+                    specOffsets.Add(curSpec);
                 }
-                else
-                {
-                    // Такого не должно быть, но на всякий случай прерываем
-                    break;
-                }
+                curSpec = allSpecs.ContainsKey(curSpec) ? allSpecs[curSpec].nextPtr : -1;
             }
             if (specOffsets.Count > 0)
                 compToSpecs[comp.oldOffset] = specOffsets;
         }
 
-        // 6. Определяем новые смещения для записей спецификации
-        Dictionary<int, int> oldToNewSpec = new();
+        // 6. Определяем новые смещения для всех активных записей спецификации,
+        //    сохраняя порядок обхода компонентов (это станет глобальным порядком)
+        var oldToNewSpec = new Dictionary<int, int>();
         int newSpecOffset = 8;
-        // Также для каждого компонента запомним новое смещение первой записи
-        Dictionary<int, int> compNewFirstSpec = new(); // ключ - старый offset компонента
-
-        // Сначала пройдем по компонентам в том порядке, в котором они будут в новом .prd (порядок activeComps)
-        // чтобы записи шли группами. Это удобно, но не обязательно.
         foreach (var comp in activeComps)
         {
             if (compToSpecs.TryGetValue(comp.oldOffset, out var specList))
             {
-                // Запоминаем первую запись для компонента
-                compNewFirstSpec[comp.oldOffset] = newSpecOffset;
                 foreach (var oldSpec in specList)
                 {
                     oldToNewSpec[oldSpec] = newSpecOffset;
                     newSpecOffset += 11;
                 }
             }
-            else
-            {
-                compNewFirstSpec[comp.oldOffset] = -1;
-            }
         }
+        int totalActiveSpecs = oldToNewSpec.Count;
+        // 8. Записываем новый файл спецификаций
+string tempSpecPath = _specFs!.Name + ".tmp";
+using (var newSpecFs = new FileStream(tempSpecPath, FileMode.Create))
+{
+    // Заголовок: FirstSpec = -1 (не используется), FreeSpace
+    WriteInt(newSpecFs, -1);
+    WriteInt(newSpecFs, 8 + totalActiveSpecs * 11);
 
-        int totalSpecs = oldToNewSpec.Count;
-
-        // 7. Теперь записываем новый .prs во временный файл
-        string tempSpecPath = _specFs!.Name + ".tmp";
-        using (var newSpecFs = new FileStream(tempSpecPath, FileMode.Create))
+    // Записываем записи группами по родителям
+    foreach (var comp in activeComps)
+    {
+        if (compToSpecs.TryGetValue(comp.oldOffset, out var specList))
         {
-            // Заголовок: firstSpec = -1, freeSpace
-            WriteInt(newSpecFs, -1); // firstSpec
-            WriteInt(newSpecFs, 8 + totalSpecs * 11); // freeSpace
-
-            // Записываем записи в том же порядке, в каком мы назначили смещения (по компонентам)
-            foreach (var comp in activeComps)
+            for (int i = 0; i < specList.Count; i++)
             {
-                if (compToSpecs.TryGetValue(comp.oldOffset, out var specList))
-                {
-                    // Для каждой записи в specList (они уже в нужном порядке)
-                    for (int i = 0; i < specList.Count; i++)
-                    {
-                        int oldSpec = specList[i];
-                        var specData = allSpecs[oldSpec];
-                        int newProd = oldToNewComp[specData.prodPtr];
-                        int newNext = (i < specList.Count - 1) ? oldToNewSpec[specList[i + 1]] : -1;
-                        newSpecFs.Seek(oldToNewSpec[oldSpec], SeekOrigin.Begin);
-                        newSpecFs.WriteByte(0); // CanBeDel = 0
-                        WriteInt(newSpecFs, newProd);
-                        WriteUshort(newSpecFs, specData.mentions);
-                        WriteInt(newSpecFs, newNext);
-                    }
-                }
+                int oldSpec = specList[i];
+                var data = allSpecs[oldSpec];
+                int newOff = oldToNewSpec[oldSpec];
+                int nextInGroup = (i < specList.Count - 1) ? oldToNewSpec[specList[i + 1]] : -1;
+
+                newSpecFs.WriteByte(0); // canBeDel
+                WriteInt(newSpecFs, oldToNewComp[data.prodPtr]);
+                WriteUshort(newSpecFs, data.mentions);
+                WriteInt(newSpecFs, nextInGroup);
             }
         }
-
-        // 8. Записываем новый .prd
-        string tempProdPath = _prodFs!.Name + ".tmp";
-        using (var newProdFs = new FileStream(tempProdPath, FileMode.Create))
-        {
-            // Заголовок
-            newProdFs.Write(Encoding.ASCII.GetBytes("PS"), 0, 2);
-            WriteUshort(newProdFs, _nameSize);
-            WriteInt(newProdFs, activeComps.Count > 0 ? 28 : -1); // firstProd
-            WriteInt(newProdFs, 28 + activeComps.Count * compSize); // freeSpace
-            byte[] nameBuf = new byte[16];
-            string specFileName = Path.GetFileName(_specFs.Name);
-            Encoding.ASCII.GetBytes(specFileName.PadRight(16)).CopyTo(nameBuf, 0);
-            newProdFs.Write(nameBuf, 0, 16);
-
-            // Записываем компоненты
-            for (int i = 0; i < activeComps.Count; i++)
-            {
-                var comp = activeComps[i];
-                int newOffset = oldToNewComp[comp.oldOffset];
-                int newNext = (i < activeComps.Count - 1) ? oldToNewComp[activeComps[i + 1].oldOffset] : -1;
-                int newSpecPtr = compNewFirstSpec.TryGetValue(comp.oldOffset, out int sp) ? sp : -1;
-
-                newProdFs.Seek(newOffset, SeekOrigin.Begin);
-                newProdFs.WriteByte(0); // CanBeDel
-                newProdFs.WriteByte(comp.type);
-                WriteInt(newProdFs, newSpecPtr);
-                WriteInt(newProdFs, newNext);
-                byte[] nameBytes = new byte[_nameSize];
-                Encoding.ASCII.GetBytes(comp.name.PadRight(_nameSize, ' ')).CopyTo(nameBytes, 0);
-                newProdFs.Write(nameBytes, 0, _nameSize);
-            }
-        }
-
-        // 9. Заменяем файлы
-        _prodFs.Close();
-        _specFs.Close();
-        File.Delete(_prodFs.Name);
-        File.Move(tempProdPath, _prodFs.Name);
-        File.Delete(_specFs.Name);
-        File.Move(tempSpecPath, _specFs.Name);
-        _prodFs = new FileStream(_prodFs.Name, FileMode.Open, FileAccess.ReadWrite);
-        _specFs = new FileStream(_specFs.Name, FileMode.Open, FileAccess.ReadWrite);
-
-        Console.WriteLine("Truncate выполнен.");
     }
+}
 
+// 9. Записываем новый файл компонентов
+string tempProdPath = _prodFs!.Name + ".tmp";
+using (var newProdFs = new FileStream(tempProdPath, FileMode.Create))
+{
+    // Заголовок
+    newProdFs.Write(Encoding.ASCII.GetBytes("PS"), 0, 2);
+    WriteUshort(newProdFs, _nameSize);
+    int firstProd = activeComps.Count > 0 ? oldToNewComp[activeComps[0].oldOffset] : -1;
+    WriteInt(newProdFs, firstProd);
+    WriteInt(newProdFs, 28 + activeComps.Count * compSize); // freeSpace
+    
+    // Имя файла спецификации в заголовке (должно быть ASCII, т.к. это имя файла)
+    byte[] nameBuf = new byte[16];
+    string specFileName = Path.GetFileName(_specFs.Name);
+    Encoding.ASCII.GetBytes(specFileName.PadRight(16)).CopyTo(nameBuf, 0);
+    newProdFs.Write(nameBuf, 0, 16);
+
+    // Кодировка для имён компонентов (windows-1251 для поддержки русского)
+    Encoding nameEncoding = Encoding.GetEncoding(1251);
+
+    // Записи компонентов
+    for (int i = 0; i < activeComps.Count; i++)
+    {
+        var comp = activeComps[i];
+        int newOff = oldToNewComp[comp.oldOffset];
+        int newNext = (i < activeComps.Count - 1) ? oldToNewComp[activeComps[i + 1].oldOffset] : -1;
+        int newSpecPtr = -1;
+        if (compToSpecs.TryGetValue(comp.oldOffset, out var specList) && specList.Count > 0)
+            newSpecPtr = oldToNewSpec[specList[0]];
+
+        newProdFs.Seek(newOff, SeekOrigin.Begin);
+        newProdFs.WriteByte(0); // canBeDel
+        newProdFs.WriteByte(comp.type);
+        WriteInt(newProdFs, newSpecPtr);
+        WriteInt(newProdFs, newNext);
+        
+        // Запись имени компонента в windows-1251 с правильным заполнением пробелами
+        byte[] nameBytes = new byte[_nameSize];
+        byte[] src = nameEncoding.GetBytes(comp.name);
+        
+        if (src.Length > _nameSize)
+            throw new Exception($"Имя компонента '{comp.name}' слишком длинное (макс. {_nameSize} байт)");
+        
+        // Копируем байты имени
+        Array.Copy(src, nameBytes, src.Length);
+        
+        // Заполняем остаток пробелами (код 32 в любой однобайтовой кодировке)
+        for (int j = src.Length; j < _nameSize; j++)
+            nameBytes[j] = 32;
+        
+        newProdFs.Write(nameBytes, 0, _nameSize);
+    }
+}
+
+// 10. Замена старых файлов новыми
+_prodFs.Close();
+_specFs.Close();
+File.Delete(_prodFs.Name);
+File.Move(tempProdPath, _prodFs.Name);
+File.Delete(_specFs.Name);
+File.Move(tempSpecPath, _specFs.Name);
+_prodFs = new FileStream(_prodFs.Name, FileMode.Open, FileAccess.ReadWrite);
+_specFs = new FileStream(_specFs.Name, FileMode.Open, FileAccess.ReadWrite);
+
+Console.WriteLine("Truncate выполнен.");
+        }
+    
     // Добавим метод WriteUshort для удобства
     private void WriteUshort(FileStream fs, ushort value)
     {
         fs.Write(BitConverter.GetBytes(value), 0, 2);
     } 
+    
     //  PRINT (*) 
     public void PrintAll()
     {
@@ -479,6 +478,7 @@ public partial class DataManager : IDisposable
             curr = n.NextNodePtr;
         }
     }
+    
     //  PRINT (дерево спецификации) 
     public void PrintComponentTree(string name)
     {
@@ -502,7 +502,7 @@ public partial class DataManager : IDisposable
             if (spec.CanBeDel == 0)
             {
                 var component = new ProdNodeHelper(_prodFs!, spec.ProdNodePtr, _nameSize);
-
+                if (component.CanBeDel != 0) continue; // пропускаем удалённые
                 string indent = new string('|', level).Replace("|", "|   ");
                 Console.WriteLine($"{indent}|");
                 Console.WriteLine($"{indent} {component.Name} (x{spec.Mentions})");
@@ -515,22 +515,56 @@ public partial class DataManager : IDisposable
             currentEntry = spec.NextNodePtr;
         }
     }
+
     //  HELP 
     public void Help()
     {
         Console.WriteLine("Доступные команды:");
-        Console.WriteLine("  Create имя_файла(длина_имени, имя_файла_спецификаций)");
+        Console.WriteLine();
+        Console.WriteLine("  Create имя_файла макс_длина_имени [имя_файла_спецификации]");
+        Console.WriteLine("    Пример: Create mydb 30");
+        Console.WriteLine("    Пример: Create mydb 30 myspec.prs");
+        Console.WriteLine();
         Console.WriteLine("  Open имя_файла");
-        Console.WriteLine("  Input имя_компонента, тип - тип: Изделие, Узел, Деталь");
-        Console.WriteLine("  Input родитель/ребенок - добавить связь в спецификацию");
+        Console.WriteLine("    Пример: Open mydb.prd");
+        Console.WriteLine("    Пример: Open mydb");
+        Console.WriteLine();
+        Console.WriteLine("  Input имя тип - добавить компонент (тип: Изделие, Узел, Деталь)");
+        Console.WriteLine("    Пример: Input Двигатель Изделие");
+        Console.WriteLine("    Пример: Input \"Коленчатый вал\" Узел");
+        Console.WriteLine();
+        Console.WriteLine("  Input родитель/ребенок [количество] - добавить связь");
+        Console.WriteLine("    Пример: Input Двигатель/Поршень");
+        Console.WriteLine("    Пример: Input Двигатель/Поршень 4");
+        Console.WriteLine();
         Console.WriteLine("  Delete имя_компонента - удалить компонент");
+        Console.WriteLine("    Пример: Delete Двигатель");
+        Console.WriteLine();
         Console.WriteLine("  Delete родитель/ребенок - удалить связь");
-        Console.WriteLine("  Restore имя_компонента - восстановить компонент и его спецификацию");
+        Console.WriteLine("    Пример: Delete Двигатель/Поршень");
+        Console.WriteLine();
+        Console.WriteLine("  Restore имя_компонента - восстановить компонент");
         Console.WriteLine("  Restore * - восстановить все");
+        Console.WriteLine("    Пример: Restore Двигатель");
+        Console.WriteLine("    Пример: Restore *");
+        Console.WriteLine();
         Console.WriteLine("  Truncate - физически удалить помеченные записи");
+        Console.WriteLine();
         Console.WriteLine("  Print * - список всех компонентов");
         Console.WriteLine("  Print имя_компонента - дерево спецификации");
+        Console.WriteLine("    Пример: Print *");
+        Console.WriteLine("    Пример: Print Двигатель");
+        Console.WriteLine();
+        Console.WriteLine("  Help [файл] - показать справку или сохранить в файл");
+        Console.WriteLine("    Пример: Help");
+        Console.WriteLine("    Пример: Help help.txt");
+        Console.WriteLine();
         Console.WriteLine("  Exit - выход");
+        Console.WriteLine();
+        Console.WriteLine("Примечания:");
+        Console.WriteLine("  - Если имя содержит пробелы, заключайте его в кавычки");
+        Console.WriteLine("  - Расширения .prd и .prs добавляются автоматически при необходимости");
+        Console.WriteLine("  - Кратность связи по умолчанию = 1");
     }
 
     //  Вспомогательные методы для работы с указателями 
@@ -566,13 +600,22 @@ public partial class DataManager : IDisposable
     //  Проверка наличия ссылок на компонент в спецификациях 
     private bool HasReferences(int prodOffset)
     {
-        int curr = GetFirstSpec();
-        while (curr != -1)
+        int currComp = GetFirstProd();
+        while (currComp != -1)
         {
-            var spec = new SpecNodeHelper(_specFs!, curr);
-            if (spec.CanBeDel == 0 && spec.ProdNodePtr == prodOffset)
-                return true;
-            curr = spec.NextNodePtr;
+            var comp = new ProdNodeHelper(_prodFs!, currComp, _nameSize);
+            if (comp.CanBeDel == 0) // только активные родители
+            {
+                int currSpec = comp.SpecNodePtr;
+                while (currSpec != -1)
+                {
+                    var spec = new SpecNodeHelper(_specFs!, currSpec);
+                    if (spec.CanBeDel == 0 && spec.ProdNodePtr == prodOffset)
+                        return true;
+                    currSpec = spec.NextNodePtr;
+                }
+            }
+            currComp = comp.NextNodePtr;
         }
         return false;
     }
@@ -646,22 +689,6 @@ public partial class DataManager : IDisposable
     }
 
     public ushort NameSize => _nameSize;
-
-    // Добавление связи по смещениям
-    private int FindPrevSpecInGlobalList(int targetOffset)
-    {
-        int prev = -1;
-        int curr = GetFirstSpec();
-        while (curr != -1 && curr != targetOffset)
-        {
-            prev = curr;
-            var spec = new SpecNodeHelper(_specFs!, curr);
-            curr = spec.NextNodePtr;
-        }
-        if (curr == targetOffset)
-            return prev;
-        return -1; // не найдено (хотя target должна быть в списке)
-    }
 
     // Проверка, является ли potentialAncestor предком node
     private bool IsAncestor(int potentialAncestorOffset, int nodeOffset)

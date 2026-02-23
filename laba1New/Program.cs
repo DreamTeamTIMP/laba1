@@ -8,6 +8,7 @@ public class Program
 {
     static public int Main()
     {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         CLI.Run();
         return 0;
     }
