@@ -144,6 +144,8 @@ public partial class DataManager : IDisposable
             throw new Exception("Один из компонентов помечен на удаление.");
         if (parent.Type == ComponentTypes.Detail)
             throw new Exception("Деталь не может иметь спецификацию!");
+        if (child.Type == ComponentTypes.Product)
+            throw new Exception("Изделие не может быть комплектующим.");
         if (IsAncestor(parentOffset, childOffset))
             throw new InvalidOperationException("Обнаружена циклическая ссылка.");
 
@@ -572,15 +574,10 @@ Console.WriteLine("Truncate выполнен.");
     private void SetFirstProd(int v) { _prodFs!.Seek(4, SeekOrigin.Begin); WriteInt(_prodFs, v); }
     private int GetFreeProd() { _prodFs!.Seek(8, SeekOrigin.Begin); return ReadInt(_prodFs); }
     private void UpdateFreeProd(int v) { _prodFs!.Seek(8, SeekOrigin.Begin); WriteInt(_prodFs, v); }
-
-    private int GetFirstSpec() { _specFs!.Seek(0, SeekOrigin.Begin); return ReadInt(_specFs); }
-    private void SetFirstSpec(int v) { _specFs!.Seek(0, SeekOrigin.Begin); WriteInt(_specFs, v); }
     private int GetFreeSpec() { _specFs!.Seek(4, SeekOrigin.Begin); return ReadInt(_specFs); }
     private void UpdateFreeSpec(int v) { _specFs!.Seek(4, SeekOrigin.Begin); WriteInt(_specFs, v); }
-
     private int ReadInt(FileStream fs) { byte[] b = new byte[4]; fs.Read(b, 0, 4); return BitConverter.ToInt32(b, 0); }
     private void WriteInt(FileStream fs, int v) { fs.Write(BitConverter.GetBytes(v), 0, 4); }
-
     //  Поиск узла по имени 
     public ProdNodeHelper? FindNode(string name, bool includeDeleted = false)
     {
@@ -596,7 +593,6 @@ Console.WriteLine("Truncate выполнен.");
         }
         return null;
     }
-
     //  Проверка наличия ссылок на компонент в спецификациях 
     private bool HasReferences(int prodOffset)
     {
@@ -635,7 +631,27 @@ Console.WriteLine("Truncate выполнен.");
         // Возвращаем в текущем порядке (алфавитном, если файл поддерживает)
         return list;
     }
-
+    private bool IsComponentUsedAsChild(int componentOffset)
+    {
+        int currComp = GetFirstProd();
+        while (currComp != -1)
+        {
+            var parent = new ProdNodeHelper(_prodFs!, currComp, _nameSize);
+            if (parent.CanBeDel == 0) // только активные родители
+            {
+                int currSpec = parent.SpecNodePtr;
+                while (currSpec != -1)
+                {
+                    var spec = new SpecNodeHelper(_specFs!, currSpec);
+                    if (spec.CanBeDel == 0 && spec.ProdNodePtr == componentOffset)
+                        return true;
+                    currSpec = spec.NextNodePtr;
+                }
+            }
+            currComp = parent.NextNodePtr;
+        }
+        return false;
+    }
     public void UpdateComponent(int offset, string newName, byte newType)
     {
 
@@ -650,7 +666,11 @@ Console.WriteLine("Truncate выполнен.");
             }
             curr = node.NextNodePtr;
         }
-
+        // Запрещаем смену на "Изделие", если компонент уже используется как комплектующий
+        if (newType == ComponentTypes.Product && IsComponentUsedAsChild(offset))
+        {
+            throw new Exception("Нельзя изменить тип на 'Изделие', так как компонент уже используется в качестве комплектующего в других спецификациях.");
+        }
         // Обновляем поля
         var target = new ProdNodeHelper(_prodFs!, offset, _nameSize);
         if (newType == ComponentTypes.Detail && target.SpecNodePtr != -1)
@@ -661,7 +681,6 @@ Console.WriteLine("Truncate выполнен.");
         // Перестраиваем алфавитный порядок, если необходимо
         ReorderAll();
     }
-
     public void DeleteComponent(int offset)
     {
         var node = new ProdNodeHelper(_prodFs!, offset, _nameSize);
@@ -674,22 +693,18 @@ Console.WriteLine("Truncate выполнен.");
 
         node.CanBeDel = -1;
     }
-
     // Доступ к потокам и размеру имени (для использования в GUI)
     public FileStream GetProdStream()
     {
         if (_prodFs == null) throw new InvalidOperationException("Файл не открыт.");
         return _prodFs;
     }
-
     public FileStream GetSpecStream()
     {
         if (_specFs == null) throw new InvalidOperationException("Файл не открыт.");
         return _specFs;
     }
-
     public ushort NameSize => _nameSize;
-
     // Проверка, является ли potentialAncestor предком node
     private bool IsAncestor(int potentialAncestorOffset, int nodeOffset)
     {
@@ -711,7 +726,6 @@ Console.WriteLine("Truncate выполнен.");
         }
         return false;
     }
-
     // Удаление связи по смещению записи спецификации
     public void DeleteRelation(int specOffset)
     {
@@ -722,7 +736,6 @@ Console.WriteLine("Truncate выполнен.");
         spec.CanBeDel = -1;
         // Примечание: не корректируем указатели, так как это логическое удаление
     }
-
     // Обновление кратности
     public void UpdateMentions(int specOffset, ushort newMentions)
     {
@@ -735,7 +748,6 @@ Console.WriteLine("Truncate выполнен.");
 
         spec.Mentions = newMentions;
     }
-
     public void Dispose()
     {
         _prodFs?.Close();
