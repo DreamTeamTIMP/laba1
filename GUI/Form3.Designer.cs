@@ -176,6 +176,7 @@
             btnSelect.TabIndex = 10;
             btnSelect.Text = "Выбрать";
             btnSelect.UseVisualStyleBackColor = true;
+            btnSelect.Visible = false;
             // 
             // ComponentListForm
             // 

@@ -7,7 +7,7 @@ public partial class DataManager : IDisposable
     private FileStream? _specFs;
     private ushort _nameSize;
 
-    // --- CREATE ---
+    //  CREATE 
     public void Create(string prodName, ushort dataSize, string? specName = null)
     {
         specName ??= prodName + ".prs";
@@ -32,7 +32,7 @@ public partial class DataManager : IDisposable
         _nameSize = dataSize;
     }
 
-    // --- OPEN ---
+    //  OPEN 
     public void Open(string prodPath)
     {
         if (!prodPath.EndsWith(".prd")) prodPath += ".prd";
@@ -64,7 +64,7 @@ public partial class DataManager : IDisposable
 
 
 
-    // --- INPUT (Тип: Изделие, Узел, Деталь) ---
+    //  INPUT (Тип: Изделие, Узел, Деталь) 
     public void AddComponent(string name, string typeStr)
     {
         if (FindNode(name, includeDeleted: true) != null)
@@ -90,7 +90,7 @@ public partial class DataManager : IDisposable
         UpdateFreeProd(offset + node.TotalSize);
     }
 
-    // --- INPUT (Связь: Родитель/Ребенок) ---
+    //  INPUT (Связь: Родитель/Ребенок) 
     public void AddRelation(string parentName, string childName, ushort count = 1)
     {
         if(count == 0)
@@ -115,7 +115,7 @@ public partial class DataManager : IDisposable
         UpdateFreeSpec(newSpecOff + 11);
     }
 
-    // --- DELETE (Логическое удаление компонента) ---
+    //  DELETE (Логическое удаление компонента) 
     public void DeleteComponent(string name)
     {
         var node = FindNode(name);
@@ -127,7 +127,7 @@ public partial class DataManager : IDisposable
         node.CanBeDel = -1;
     }
 
-    // --- DELETE (Удаление связи из спецификации) ---
+    //  DELETE (Удаление связи из спецификации) 
     public void DeleteRelation(string parentName, string childName)
     {
         var parent = FindNode(parentName);
@@ -149,7 +149,7 @@ public partial class DataManager : IDisposable
         throw new Exception("Такая связь не найдена");
     }
 
-    // --- RESTORE (для всех) ---
+    //  RESTORE (для всех) 
     public void RestoreAll()
     {
         int curr = 28;
@@ -164,7 +164,7 @@ public partial class DataManager : IDisposable
         Console.WriteLine("Все записи восстановлены и отсортированы.");
     }
 
-    // --- RESTORE (для конкретного компонента) ---
+    //  RESTORE (для конкретного компонента) 
     public void Restore(string name)
     {
         var node = FindNode(name, includeDeleted: true);
@@ -188,7 +188,7 @@ public partial class DataManager : IDisposable
         }
     }
 
-    // --- Перестроение алфавитного порядка всех активных записей .prd ---
+    //  Перестроение алфавитного порядка всех активных записей .prd 
     private void ReorderAll()
     {
         var activeNodes = new List<(int offset, string name)>();
@@ -217,12 +217,12 @@ public partial class DataManager : IDisposable
         }
     }
 
-    // --- TRUNCATE (физическое удаление) ---
+    //  TRUNCATE (физическое удаление) 
     public void Truncate()
     {
         Console.WriteLine("Выполняется физическое сжатие...");
 
-        // --- .prd ---
+        //  .prd 
         var activeProd = new List<(int oldOffset, byte[] data, int nextPtr, int specPtr, byte type, string name)>();
         int curr = 28;
         int freeProd = GetFreeProd();
@@ -289,7 +289,7 @@ public partial class DataManager : IDisposable
         File.Move(tempProd, _prodFs.Name);
         _prodFs = new FileStream(_prodFs.Name, FileMode.Open, FileAccess.ReadWrite);
 
-        // --- .prs ---
+        //  .prs 
         var activeSpec = new List<(int oldOffset, byte[] data, int prodPtr, int nextPtr, ushort mentions)>();
         curr = 8;
         int freeSpec = GetFreeSpec();
@@ -341,7 +341,7 @@ public partial class DataManager : IDisposable
         Console.WriteLine("Физическое сжатие завершено.");
     }
 
-    // --- PRINT (*) ---
+    //  PRINT (*) 
     public void PrintAll()
     {
         Console.WriteLine($"{"Наименование",-16} | {"Тип"}");
@@ -364,7 +364,7 @@ public partial class DataManager : IDisposable
         }
     }
 
-    // --- PRINT (дерево спецификации) ---
+    //  PRINT (дерево спецификации) 
     public void PrintComponentTree(string name)
     {
         var node = FindNode(name);
@@ -409,7 +409,7 @@ public partial class DataManager : IDisposable
         }
     }
 
-    // --- HELP ---
+    //  HELP 
     public void Help()
     {
         Console.WriteLine("Доступные команды:");
@@ -427,7 +427,7 @@ public partial class DataManager : IDisposable
         Console.WriteLine("  Exit - выход");
     }
 
-    // --- Вспомогательные методы для работы с указателями ---
+    //  Вспомогательные методы для работы с указателями 
     private int GetFirstProd() { _prodFs!.Seek(4, SeekOrigin.Begin); return ReadInt(_prodFs); }
     private void SetFirstProd(int v) { _prodFs!.Seek(4, SeekOrigin.Begin); WriteInt(_prodFs, v); }
     private int GetFreeProd() { _prodFs!.Seek(8, SeekOrigin.Begin); return ReadInt(_prodFs); }
@@ -441,7 +441,7 @@ public partial class DataManager : IDisposable
     private int ReadInt(FileStream fs) { byte[] b = new byte[4]; fs.Read(b, 0, 4); return BitConverter.ToInt32(b, 0); }
     private void WriteInt(FileStream fs, int v) { fs.Write(BitConverter.GetBytes(v), 0, 4); }
 
-    // --- Поиск узла по имени ---
+    //  Поиск узла по имени 
     public ProdNodeHelper? FindNode(string name, bool includeDeleted = false)
     {
         int curr = GetFirstProd();
@@ -457,7 +457,7 @@ public partial class DataManager : IDisposable
         return null;
     }
 
-    // --- Проверка наличия ссылок на компонент в спецификациях ---
+    //  Проверка наличия ссылок на компонент в спецификациях 
     private bool HasReferences(int prodOffset)
     {
         int curr = GetFirstSpec();
@@ -490,6 +490,7 @@ public partial class DataManager : IDisposable
 
     public void UpdateComponent(int offset, string newName, byte newType)
     {
+
         // Проверка существования компонента с таким именем (кроме текущего)
         int curr = GetFirstProd();
         while (curr != -1)
@@ -504,6 +505,8 @@ public partial class DataManager : IDisposable
 
         // Обновляем поля
         var target = new ProdNodeHelper(_prodFs!, offset, _nameSize);
+        if (newType == ComponentTypes.Detail && target.SpecNodePtr != -1)
+            throw new Exception("Нельзя изменить тип на 'Деталь', так как компонент имеет спецификацию.");
         target.Name = newName;
         target.Type = newType;
 
@@ -545,15 +548,22 @@ public partial class DataManager : IDisposable
         if (count == 0)
             throw new ArgumentException("Кратность вхождения должна быть больше нуля.");
 
+        if (parentOffset == childOffset)
+            throw new InvalidOperationException("Нельзя включить компонент в самого себя.");
+
         var parent = new ProdNodeHelper(_prodFs!, parentOffset, _nameSize);
         var child = new ProdNodeHelper(_prodFs!, childOffset, _nameSize);
 
-        // Проверки как в оригинальном методе
         if (parent.CanBeDel != 0 || child.CanBeDel != 0)
             throw new Exception("Один из компонентов помечен на удаление.");
 
         if (parent.Type == ComponentTypes.Detail)
             throw new Exception("Деталь не может иметь спецификацию!");
+
+
+        // Проверка на циклическую ссылку: не является ли родитель потомком ребёнка?
+        if (IsAncestor(parentOffset, childOffset))
+            throw new InvalidOperationException("Обнаружена циклическая ссылка: компонент не может быть потомком самого себя.");
 
         int newSpecOff = GetFreeSpec();
         var newEntry = new SpecNodeHelper(_specFs!, newSpecOff);
@@ -565,6 +575,28 @@ public partial class DataManager : IDisposable
 
         parent.SpecNodePtr = newSpecOff;
         UpdateFreeSpec(newSpecOff + 11);
+    }
+
+    // Проверка, является ли potentialAncestor предком node
+    private bool IsAncestor(int potentialAncestorOffset, int nodeOffset)
+    {
+        var node = new ProdNodeHelper(_prodFs!, nodeOffset, _nameSize);
+        if (node.SpecNodePtr == -1) return false;
+        int currSpec = node.SpecNodePtr;
+        while (currSpec != -1)
+        {
+            var spec = new SpecNodeHelper(_specFs!, currSpec);
+            if (spec.CanBeDel == 0)
+            {
+                int childOffset = spec.ProdNodePtr;
+                if (childOffset == potentialAncestorOffset)
+                    return true;
+                if (IsAncestor(potentialAncestorOffset, childOffset))
+                    return true;
+            }
+            currSpec = spec.NextNodePtr;
+        }
+        return false;
     }
 
     // Удаление связи по смещению записи спецификации
