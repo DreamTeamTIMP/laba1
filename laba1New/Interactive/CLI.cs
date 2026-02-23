@@ -9,248 +9,171 @@ namespace laba1New
         public static void Run()
         {
             using var manager = new DataManager();
-            bool running = true;
+            Console.WriteLine("Система управления спецификациями готова к работе.");
 
-            while (running)
+            while (true)
             {
                 Console.Write("PS> ");
                 string? input = Console.ReadLine()?.Trim();
                 if (string.IsNullOrEmpty(input)) continue;
 
+                if (input.Equals("exit", StringComparison.OrdinalIgnoreCase)) break;
+
                 try
                 {
-                    running = ProcessCommand(manager, input);
+                    ProcessCommand(manager, input);
                 }
                 catch (Exception ex)
                 {
+                    // ТЗ: После сообщения об ошибке выводится PS>
                     Console.WriteLine($"Ошибка: {ex.Message}");
                 }
             }
         }
 
-        static bool ProcessCommand(DataManager manager, string input)
+        static void ProcessCommand(DataManager manager, string input)
         {
-            // Разбиваем на части по пробелам, первый элемент — команда
-            string[] parts = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length == 0) return true;
-
-            string command = parts[0].ToLower();
-
-            switch (command)
-            {
-                case "create":
-                    HandleCreate(manager, input);
-                    break;
-                case "open":
-                    HandleOpen(manager, parts);
-                    break;
-                case "input":
-                    HandleInput(manager, input);
-                    break;
-                case "delete":
-                    HandleDelete(manager, input);
-                    break;
-                case "restore":
-                    HandleRestore(manager, input);
-                    break;
-                case "truncate":
-                    manager.Truncate();
-                    break;
-                case "print":
-                    HandlePrint(manager, input);
-                    break;
-                case "help":
-                    HandleHelp(manager, parts);
-                    break;
-                case "exit":
-                    return false;
-                default:
-                    Console.WriteLine("Неизвестная команда. Введите Help для справки.");
-                    break;
-            }
-            return true;
+            // Регулярки для парсинга команд согласно ТЗ
+            if (Regex.IsMatch(input, @"^Create\s+", RegexOptions.IgnoreCase))
+                HandleCreate(manager, input);
+            else if (Regex.IsMatch(input, @"^Open\s+", RegexOptions.IgnoreCase))
+                HandleOpen(manager, input);
+            else if (Regex.IsMatch(input, @"^Input\s*", RegexOptions.IgnoreCase))
+                HandleInput(manager, input);
+            else if (Regex.IsMatch(input, @"^Delete\s*", RegexOptions.IgnoreCase))
+                HandleDelete(manager, input);
+            else if (Regex.IsMatch(input, @"^Restore\s*", RegexOptions.IgnoreCase))
+                HandleRestore(manager, input);
+            else if (input.Equals("Truncate", StringComparison.OrdinalIgnoreCase))
+                manager.Truncate();
+            else if (Regex.IsMatch(input, @"^Print\s*", RegexOptions.IgnoreCase))
+                HandlePrint(manager, input);
+            else if (Regex.IsMatch(input, @"^Help", RegexOptions.IgnoreCase))
+                HandleHelp(manager, input);
+            else
+                Console.WriteLine("Неизвестная команда.");
         }
+
         static void HandleCreate(DataManager manager, string input)
         {
-            var match = Regex.Match(input, @"Create\s+(\w+)\((\d+)(?:\s*,\s*([^)]+))?\)", RegexOptions.IgnoreCase);
-            if (!match.Success)
-            {
-                Console.WriteLine("Неверный формат команды Create...");
-                return;
-            }
+            // Формат: Create имя(размер[, спецификация])
+            var match = Regex.Match(input, @"^Create\s+([^(\s]+)\s*\((\d+)(?:\s*,\s*([^)]+))?\)", RegexOptions.IgnoreCase);
+            if (!match.Success) throw new Exception("Формат: Create имя_файла(макс_длина_имени[, имя_спец])");
 
             string prodName = match.Groups[1].Value;
-            if (!ushort.TryParse(match.Groups[2].Value, out ushort dataSize)) return;
+            ushort dataSize = ushort.Parse(match.Groups[2].Value);
             string? specName = match.Groups[3].Success ? match.Groups[3].Value.Trim() : null;
+            if (specName != null && !specName.EndsWith(".prs")) specName += ".prs";
+            string fullPath = prodName.EndsWith(".prd") ? prodName : prodName + ".prd";
 
-            string prodPath = prodName + ".prd";
-            if (File.Exists(prodPath))
+            if (File.Exists(fullPath))
             {
-                using (var fs = new FileStream(prodPath, FileMode.Open, FileAccess.Read))
-                {
-                    if (fs.Length >= 2)
-                    {
-                        byte[] sig = new byte[2];
-                        fs.Read(sig, 0, 2);
-                        if (System.Text.Encoding.ASCII.GetString(sig) == "PS")
-                        {
-                            Console.Write($"Файл {prodPath} уже существует. Перезаписать? (y/n): ");
-                            if (Console.ReadLine()?.Trim().ToLower() != "y")
-                            {
-                                Console.WriteLine("Операция отменена.");
-                                return;
-                            }
-                        }
-                        else
-                        {
-                            Console.WriteLine("Ошибка: Файл существует, но имеет неверную сигнатуру.");
-                            return;
-                        }
-                    }
-                }
+                // ТЗ: Проверка сигнатуры перед подтверждением
+                if (!CheckSignature(fullPath))
+                    throw new Exception("Сигнатура существующего файла не соответствует заданию.");
+
+                Console.Write($"Файл {fullPath} существует. Перезаписать? (y/n): ");
+                if (Console.ReadLine()?.Trim().ToLower() != "y") return;
             }
 
-            manager.Create(prodName, dataSize, specName);
-            Console.WriteLine("Файлы созданы.");
+            manager.Create(prodName.Replace(".prd", ""), dataSize, specName);
+            Console.WriteLine("Файлы созданы и открыты.");
         }
-        static void HandleOpen(DataManager manager, string[] parts)
+
+        static void HandleOpen(DataManager manager, string input)
         {
-            if (parts.Length < 2)
-            {
-                Console.WriteLine("Использование: Open имя_файла");
-                return;
-            }
+            var parts = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2) throw new Exception("Формат: Open имя_файла");
             manager.Open(parts[1]);
         }
 
         static void HandleInput(DataManager manager, string input)
         {
-            // Два варианта: Input (имя, тип) или Input (родитель/ребенок)
-            var matchComponent = Regex.Match(input, @"Input\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)", RegexOptions.IgnoreCase);
-            if (matchComponent.Success)
+            // Вариант 1: (имя, тип)
+            var matchComp = Regex.Match(input, @"Input\s*\(\s*([^,)]+)\s*,\s*([^)]+)\s*\)", RegexOptions.IgnoreCase);
+            if (matchComp.Success)
             {
-                string name = matchComponent.Groups[1].Value.Trim();
-                string type = matchComponent.Groups[2].Value.Trim();
-                manager.AddComponent(name, type);
-                Console.WriteLine($"Компонент {name} добавлен.");
+                manager.AddComponent(matchComp.Groups[1].Value.Trim(), matchComp.Groups[2].Value.Trim());
                 return;
             }
 
-            var matchRelation = Regex.Match(input, @"Input\s*\(\s*([^/]+)/([^)]+)\s*\)", RegexOptions.IgnoreCase);
-            if (matchRelation.Success)
+            // Вариант 2: (родитель/ребенок)
+            var matchRel = Regex.Match(input, @"Input\s*\(\s*([^/)]+)\s*/\s*([^)]+)\s*\)", RegexOptions.IgnoreCase);
+            if (matchRel.Success)
             {
-                string parent = matchRelation.Groups[1].Value.Trim();
-                string child = matchRelation.Groups[2].Value.Trim();
-                // Можно указать количество через пробел после команды, но в задании нет — по умолчанию 1
-                manager.AddRelation(parent, child, 1);
-                Console.WriteLine($"Связь {parent} -> {child} добавлена.");
+                manager.AddRelation(matchRel.Groups[1].Value.Trim(), matchRel.Groups[2].Value.Trim());
                 return;
             }
 
-            Console.WriteLine("Неверный формат команды Input.");
+            throw new Exception("Неверный формат Input. Ожидается (имя, тип) или (родитель/ребенок)");
         }
 
         static void HandleDelete(DataManager manager, string input)
         {
-            // Два варианта: Delete (имя) или Delete (родитель/ребенок)
-            var matchComponent = Regex.Match(input, @"Delete\s*\(\s*([^/]+)\s*\)", RegexOptions.IgnoreCase);
-            if (matchComponent.Success)
+            var matchRel = Regex.Match(input, @"Delete\s*\(\s*([^/)]+)\s*/\s*([^)]+)\s*\)", RegexOptions.IgnoreCase);
+            if (matchRel.Success)
             {
-                string name = matchComponent.Groups[1].Value.Trim();
-                manager.DeleteComponent(name);
-                Console.WriteLine($"Компонент {name} помечен на удаление.");
+                manager.DeleteRelation(matchRel.Groups[1].Value.Trim(), matchRel.Groups[2].Value.Trim());
                 return;
             }
 
-            var matchRelation = Regex.Match(input, @"Delete\s*\(\s*([^/]+)/([^)]+)\s*\)", RegexOptions.IgnoreCase);
-            if (matchRelation.Success)
+            var matchComp = Regex.Match(input, @"Delete\s*\(\s*([^)]+)\s*\)", RegexOptions.IgnoreCase);
+            if (matchComp.Success)
             {
-                string parent = matchRelation.Groups[1].Value.Trim();
-                string child = matchRelation.Groups[2].Value.Trim();
-                manager.DeleteRelation(parent, child);
-                Console.WriteLine($"Связь {parent} -> {child} удалена.");
+                manager.DeleteComponent(matchComp.Groups[1].Value.Trim());
                 return;
             }
-
-            Console.WriteLine("Неверный формат команды Delete.");
+            throw new Exception("Неверный формат Delete.");
         }
 
         static void HandleRestore(DataManager manager, string input)
         {
             var match = Regex.Match(input, @"Restore\s*\(\s*([^)]+)\s*\)", RegexOptions.IgnoreCase);
-            if (!match.Success)
-            {
-                Console.WriteLine("Использование: Restore (имя_компонента) или Restore (*)");
-                return;
-            }
+            if (!match.Success) throw new Exception("Формат: Restore (имя) или Restore (*)");
 
             string param = match.Groups[1].Value.Trim();
-            if (param == "*")
-            {
-                manager.RestoreAll();
-            }
-            else
-            {
-                manager.Restore(param);
-            }
+            if (param == "*") manager.RestoreAll();
+            else manager.Restore(param);
         }
 
         static void HandlePrint(DataManager manager, string input)
         {
             var match = Regex.Match(input, @"Print\s*\(\s*([^)]+)\s*\)", RegexOptions.IgnoreCase);
-            if (!match.Success)
-            {
-                Console.WriteLine("Использование: Print (*) или Print (имя_компонента)");
-                return;
-            }
+            if (!match.Success) throw new Exception("Формат: Print (имя) или Print (*)");
 
             string param = match.Groups[1].Value.Trim();
-            if (param == "*")
-            {
-                manager.PrintAll();
-            }
-            else
-            {
-                manager.PrintComponentTree(param);
-            }
+            if (param == "*") manager.PrintAll();
+            else manager.PrintComponentTree(param);
         }
 
-        static void HandleHelp(DataManager manager, string[] parts)
+        static void HandleHelp(DataManager manager, string input)
         {
-            if (parts.Length > 1)
+            var match = Regex.Match(input, @"Help\s*(.+)?", RegexOptions.IgnoreCase);
+            string? fileName = match.Groups[1].Success ? match.Groups[1].Value.Trim() : null;
+
+            if (!string.IsNullOrEmpty(fileName))
             {
-                // Запись справки в файл
-                string fileName = parts[1];
-                try
-                {
-                    using var writer = new StreamWriter(fileName);
-                    CaptureConsoleOutput(() => manager.Help(), writer);
-                    Console.WriteLine($"Справка записана в файл {fileName}");
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Ошибка при записи в файл: {ex.Message}");
-                }
-            }
-            else
-            {
+                using var sw = new StreamWriter(fileName);
+                var oldOut = Console.Out;
+                Console.SetOut(sw);
                 manager.Help();
+                Console.SetOut(oldOut);
+                Console.WriteLine($"Справка сохранена в {fileName}");
             }
+            else manager.Help();
         }
 
-        // Вспомогательный метод для перенаправления вывода консоли в файл
-        static void CaptureConsoleOutput(Action action, TextWriter writer)
+        private static bool CheckSignature(string path)
         {
-            var originalOut = Console.Out;
-            Console.SetOut(writer);
             try
             {
-                action();
+                using var fs = new FileStream(path, FileMode.Open, FileAccess.Read);
+                if (fs.Length < 2) return false;
+                byte[] sig = new byte[2];
+                fs.Read(sig, 0, 2);
+                return sig[0] == 'P' && sig[1] == 'S';
             }
-            finally
-            {
-                Console.SetOut(originalOut);
-            }
+            catch { return false; }
         }
     }
 }

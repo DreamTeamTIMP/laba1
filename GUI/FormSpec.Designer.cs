@@ -1,6 +1,6 @@
 ﻿namespace Laba1TIMPWinForms
 {
-    partial class Form2
+    partial class FormSpec
     {
         /// <summary>
         /// Required designer variable.

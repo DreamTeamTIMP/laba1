@@ -94,7 +94,7 @@ namespace Laba1TIMPWinForms
                 return;
             }
 
-            using (var form = new Form2(_dataManager))
+            using (var form = new FormSpec(_dataManager))
             {
                 form.ShowDialog();
             }
