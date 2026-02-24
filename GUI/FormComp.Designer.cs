@@ -2,15 +2,8 @@
 {
     partial class ComponentListForm
     {
-        /// <summary>
-        /// Обязательная переменная конструктора.
-        /// </summary>
         private System.ComponentModel.IContainer components = null;
 
-        /// <summary>
-        /// Освободить все используемые ресурсы.
-        /// </summary>
-        /// <param name="disposing">истинно, если управляемые ресурсы должны быть удалены; иначе ложно.</param>
         protected override void Dispose(bool disposing)
         {
             if (disposing && (components != null))
@@ -20,12 +13,6 @@
             base.Dispose(disposing);
         }
 
-        #region Код, автоматически созданный конструктором форм Windows
-
-        /// <summary>
-        /// Требуемый метод для поддержки конструктора — не изменяйте 
-        /// содержимое этого метода с помощью редактора кода.
-        /// </summary>
         private void InitializeComponent()
         {
             btnAdd = new Button();
@@ -34,8 +21,8 @@
             btnSave = new Button();
             btnDelete = new Button();
             dgvComponents = new DataGridView();
-            dataGridViewTextBoxColumn1 = new DataGridViewTextBoxColumn();
-            dataGridViewTextBoxColumn2 = new DataGridViewTextBoxColumn();
+            colName = new DataGridViewTextBoxColumn();
+            colType = new DataGridViewTextBoxColumn();
             lblName = new Label();
             txtName = new TextBox();
             lblType = new Label();
@@ -104,7 +91,7 @@
             dgvComponents.AllowUserToAddRows = false;
             dgvComponents.AllowUserToDeleteRows = false;
             dgvComponents.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
-            dgvComponents.Columns.AddRange(new DataGridViewColumn[] { dataGridViewTextBoxColumn1, dataGridViewTextBoxColumn2 });
+            dgvComponents.Columns.AddRange(new DataGridViewColumn[] { colName, colType });
             dgvComponents.Location = new Point(16, 77);
             dgvComponents.Margin = new Padding(4, 5, 4, 5);
             dgvComponents.Name = "dgvComponents";
@@ -114,20 +101,23 @@
             dgvComponents.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             dgvComponents.Size = new Size(747, 308);
             dgvComponents.TabIndex = 5;
+            dgvComponents.CellDoubleClick += dgvComponents_CellDoubleClick;
             // 
-            // dataGridViewTextBoxColumn1
+            // colName
             // 
-            dataGridViewTextBoxColumn1.MinimumWidth = 6;
-            dataGridViewTextBoxColumn1.Name = "dataGridViewTextBoxColumn1";
-            dataGridViewTextBoxColumn1.ReadOnly = true;
-            dataGridViewTextBoxColumn1.Width = 125;
+            colName.HeaderText = "Наименование";
+            colName.MinimumWidth = 6;
+            colName.Name = "colName";
+            colName.ReadOnly = true;
+            colName.Width = 300;
             // 
-            // dataGridViewTextBoxColumn2
+            // colType
             // 
-            dataGridViewTextBoxColumn2.MinimumWidth = 6;
-            dataGridViewTextBoxColumn2.Name = "dataGridViewTextBoxColumn2";
-            dataGridViewTextBoxColumn2.ReadOnly = true;
-            dataGridViewTextBoxColumn2.Width = 125;
+            colType.HeaderText = "Тип";
+            colType.MinimumWidth = 6;
+            colType.Name = "colType";
+            colType.ReadOnly = true;
+            colType.Width = 150;
             // 
             // lblName
             // 
@@ -146,7 +136,6 @@
             txtName.Name = "txtName";
             txtName.Size = new Size(199, 27);
             txtName.TabIndex = 7;
-            txtName.Text = "Изделие1";
             // 
             // lblType
             // 
@@ -177,6 +166,7 @@
             btnSelect.Text = "Выбрать";
             btnSelect.UseVisualStyleBackColor = true;
             btnSelect.Visible = false;
+            btnSelect.Click += btnSelect_Click;
             // 
             // ComponentListForm
             // 
@@ -205,20 +195,18 @@
             PerformLayout();
         }
 
-        #endregion
-
-        private System.Windows.Forms.Button btnAdd;
-        private System.Windows.Forms.Button btnEdit;
-        private System.Windows.Forms.Button btnCancel;
-        private System.Windows.Forms.Button btnSave;
-        private System.Windows.Forms.Button btnDelete;
-        private System.Windows.Forms.DataGridView dgvComponents;
-        private System.Windows.Forms.Label lblName;
-        private System.Windows.Forms.TextBox txtName;
-        private System.Windows.Forms.Label lblType;
-        private System.Windows.Forms.ComboBox cmbType;
-        private DataGridViewTextBoxColumn dataGridViewTextBoxColumn1;
-        private DataGridViewTextBoxColumn dataGridViewTextBoxColumn2;
+        private Button btnAdd;
+        private Button btnEdit;
+        private Button btnCancel;
+        private Button btnSave;
+        private Button btnDelete;
+        private DataGridView dgvComponents;
+        private DataGridViewTextBoxColumn colName;
+        private DataGridViewTextBoxColumn colType;
+        private Label lblName;
+        private TextBox txtName;
+        private Label lblType;
+        private ComboBox cmbType;
         private Button btnSelect;
     }
 }

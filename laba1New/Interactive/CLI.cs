@@ -4,12 +4,11 @@ using System.Text.RegularExpressions;
 
 namespace laba1New
 {
-    class CLI
+    static class CLI
     {
         public static void Run()
         {
             using var manager = new DataManager();
-            Console.WriteLine("Система управления спецификациями готова к работе.");
 
             while (true)
             {
@@ -30,11 +29,27 @@ namespace laba1New
             }
         }
 
-        static void ProcessCommand(DataManager manager, string input)
+        private static void ProcessCommand(DataManager manager, string input)
         {
-            if (Regex.IsMatch(input, @"^Create\s+", RegexOptions.IgnoreCase))
+            // Команды, которые не требуют открытых файлов
+            bool isCreate = Regex.IsMatch(input, @"^Create\s+", RegexOptions.IgnoreCase);
+            bool isOpen = Regex.IsMatch(input, @"^Open\s+", RegexOptions.IgnoreCase);
+            bool isHelp = Regex.IsMatch(input, @"^Help", RegexOptions.IgnoreCase);
+
+            if (!isCreate && !isOpen && !isHelp)
+            {
+                // Для всех остальных команд файлы должны быть открыты
+                if (!manager.IsOpen)
+                {
+                    Console.WriteLine("Ошибка: сначала откройте файлы командой Open.");
+                    return;
+                }
+            }
+
+            // Далее обработка команд
+            if (isCreate)
                 HandleCreate(manager, input);
-            else if (Regex.IsMatch(input, @"^Open\s+", RegexOptions.IgnoreCase))
+            else if (isOpen)
                 HandleOpen(manager, input);
             else if (Regex.IsMatch(input, @"^Input\s+", RegexOptions.IgnoreCase))
                 HandleInput(manager, input);
@@ -46,18 +61,18 @@ namespace laba1New
                 manager.Truncate();
             else if (Regex.IsMatch(input, @"^Print\s+", RegexOptions.IgnoreCase))
                 HandlePrint(manager, input);
-            else if (Regex.IsMatch(input, @"^Help", RegexOptions.IgnoreCase))
+            else if (isHelp)
                 HandleHelp(manager, input);
             else
                 Console.WriteLine("Неизвестная команда.");
         }
 
-        static void HandleCreate(DataManager manager, string input)
+        private static void HandleCreate(DataManager manager, string input)
         {
-            // Новый формат: Create имяфайла максдлина [имяспец]
-            var match = Regex.Match(input, @"^Create\s+(\S+)\s+(\d+)(?:\s+(\S+))?", RegexOptions.IgnoreCase);
+            // Новый формат: Create имяфайла,максдлина [имяспец]
+            var match = Regex.Match(input, @"^Create\s+(\S+)\s*,\s*(\d+)(?:\s+(\S+))?", RegexOptions.IgnoreCase);
             if (!match.Success)
-                throw new Exception("Формат: Create имя_файла макс_длина_имени [имя_файла_спецификации]");
+                throw new Exception("Формат: Create имя_файла,макс_длина_имени [имя_файла_спецификации]");
 
             string prodName = match.Groups[1].Value;
             ushort dataSize = ushort.Parse(match.Groups[2].Value);
@@ -68,7 +83,17 @@ namespace laba1New
 
             if (File.Exists(fullPath))
             {
-                if (!CheckSignature(fullPath))
+                bool sigOk;
+                try
+                {
+                    sigOk = CheckSignature(fullPath);
+                }
+                catch (IOException)
+                {
+                    throw new Exception($"Файл {fullPath} занят другим процессом. Закройте его и повторите попытку.");
+                }
+
+                if (!sigOk)
                     throw new Exception("Сигнатура существующего файла не соответствует заданию.");
 
                 Console.Write($"Файл {fullPath} существует. Перезаписать? (y/n): ");
@@ -76,17 +101,17 @@ namespace laba1New
             }
 
             manager.Create(prodName.Replace(".prd", ""), dataSize, specName);
-            Console.WriteLine("Файлы созданы и открыты.");
+            Console.WriteLine("Файлы созданы.");
         }
 
-        static void HandleOpen(DataManager manager, string input)
+        private static void HandleOpen(DataManager manager, string input)
         {
             var parts = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length < 2) throw new Exception("Формат: Open имя_файла");
             manager.Open(parts[1]);
         }
 
-        static void HandleInput(DataManager manager, string input)
+        private static void HandleInput(DataManager manager, string input)
         {
             // Удаляем "Input" из начала строки
             string args = input.Substring(5).Trim();
@@ -110,8 +135,8 @@ namespace laba1New
             else
             {
                 // Формат: Input имя тип
-                var parts = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                if (parts.Length < 2) throw new Exception("Формат: Input имя тип (Изделие/Узел/Деталь)");
+                var parts = args.Split(',', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 2) throw new Exception("Формат: Input имя,тип (Изделие/Узел/Деталь)");
 
                 string name = parts[0].Trim();
                 string type = string.Join(" ", parts.Skip(1)).Trim(); // на случай "тип из двух слов"
@@ -120,7 +145,7 @@ namespace laba1New
             }
         }
 
-        static void HandleDelete(DataManager manager, string input)
+        private static void HandleDelete(DataManager manager, string input)
         {
             // Удаляем "Delete" из начала строки
             string args = input.Substring(6).Trim();
@@ -142,7 +167,7 @@ namespace laba1New
             }
         }
 
-        static void HandleRestore(DataManager manager, string input)
+        private static void HandleRestore(DataManager manager, string input)
         {
             // Удаляем "Restore" из начала строки
             string param = input.Substring(7).Trim();
@@ -156,7 +181,7 @@ namespace laba1New
                 manager.Restore(param);
         }
 
-        static void HandlePrint(DataManager manager, string input)
+        private static void HandlePrint(DataManager manager, string input)
         {
             // Удаляем "Print" из начала строки
             string param = input.Substring(5).Trim();
@@ -170,7 +195,7 @@ namespace laba1New
                 manager.PrintComponentTree(param);
         }
 
-        static void HandleHelp(DataManager manager, string input)
+        private static void HandleHelp(DataManager manager, string input)
         {
             // Удаляем "Help" из начала строки
             string fileName = input.Length > 4 ? input.Substring(4).Trim() : "";
@@ -190,15 +215,11 @@ namespace laba1New
 
         private static bool CheckSignature(string path)
         {
-            try
-            {
-                using var fs = new FileStream(path, FileMode.Open, FileAccess.Read);
-                if (fs.Length < 2) return false;
-                byte[] sig = new byte[2];
-                fs.Read(sig, 0, 2);
-                return sig[0] == 'P' && sig[1] == 'S';
-            }
-            catch { return false; }
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            if (fs.Length < 2) return false;
+            byte[] sig = new byte[2];
+            fs.Read(sig, 0, 2);
+            return sig[0] == 'P' && sig[1] == 'S';
         }
     }
 }

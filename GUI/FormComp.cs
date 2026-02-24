@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Windows.Forms;
-using laba1New.Helpers; // для ComponentTypes
+using laba1New.Helpers;
 
 namespace GUI
 {
@@ -10,7 +10,7 @@ namespace GUI
         private DataManager _dataManager;
         private bool _isAdding = false;
         private bool _isEditing = false;
-        private int _editingOffset = -1; // смещение редактируемой записи
+        private int _editingOffset = -1;
         private bool _allowSelection;
         public int SelectedComponentOffset { get; private set; }
         public string SelectedComponentName { get; private set; }
@@ -27,71 +27,21 @@ namespace GUI
                 btnDelete.Visible = false;
                 btnSave.Visible = false;
                 btnCancel.Visible = false;
-
-                // Добавляем обработчик для кнопки "Выбрать"
-                btnSelect.Click += (s, e) => SelectCurrentRow();
-                // Двойной клик по строке тоже выбирает
-                dgvComponents.CellDoubleClick += (s, e) => SelectCurrentRow();
             }
-        }
-
-        private void SelectCurrentRow()
-        {
-            var row = GetSelectedRow();
-            if (row == null)
-            {
-                MessageBox.Show("Выберите компонент из списка.", "Информация", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-            SelectedComponentOffset = (int)row.Tag;
-            SelectedComponentName = row.Cells["Name"].Value.ToString();
-            string typeStr = row.Cells["Type"].Value.ToString();
-            SelectedComponentType = typeStr switch
-            {
-                "Изделие" => ComponentTypes.Product,
-                "Узел" => ComponentTypes.Node,
-                "Деталь" => ComponentTypes.Detail,
-                _ => throw new InvalidOperationException()
-            };
-            DialogResult = DialogResult.OK;
-            Close();
         }
 
         public ComponentListForm(DataManager dataManager)
         {
             InitializeComponent();
             _dataManager = dataManager ?? throw new ArgumentNullException(nameof(dataManager));
-            ConfigureDataGridView();
             LoadComponents();
             SetViewMode();
-        }
-
-        private void ConfigureDataGridView()
-        {
-            // Настройка колонок, если они не заданы в дизайнере
-            dgvComponents.AutoGenerateColumns = false;
-            dgvComponents.Columns.Clear();
-
-            DataGridViewTextBoxColumn colName = new DataGridViewTextBoxColumn();
-            colName.Name = "Name";
-            colName.HeaderText = "Наименование";
-            colName.DataPropertyName = "Name"; // если будем использовать binding, но мы будем заполнять вручную
-            colName.Width = 300;
-
-            DataGridViewTextBoxColumn colType = new DataGridViewTextBoxColumn();
-            colType.Name = "Type";
-            colType.HeaderText = "Тип";
-            colType.DataPropertyName = "Type";
-            colType.Width = 150;
-
-            dgvComponents.Columns.Add(colName);
-            dgvComponents.Columns.Add(colType);
         }
 
         private void LoadComponents()
         {
             dgvComponents.Rows.Clear();
-            var components = _dataManager.GetActiveComponents(); // нужно реализовать
+            var components = _dataManager.GetActiveComponents();
             foreach (var comp in components)
             {
                 string typeStr = comp.Type switch
@@ -102,7 +52,7 @@ namespace GUI
                     _ => "Неизвестно"
                 };
                 int rowIndex = dgvComponents.Rows.Add(comp.Name, typeStr);
-                dgvComponents.Rows[rowIndex].Tag = comp.Offset; // сохраняем смещение
+                dgvComponents.Rows[rowIndex].Tag = comp.Offset;
             }
         }
 
@@ -139,12 +89,11 @@ namespace GUI
 
             if (_isEditing && offset.HasValue)
             {
-                // Заполнить поля из выбранной строки
                 var row = GetSelectedRow();
                 if (row != null)
                 {
-                    txtName.Text = row.Cells["Name"].Value.ToString();
-                    string typeStr = row.Cells["Type"].Value.ToString();
+                    txtName.Text = row.Cells["colName"].Value.ToString();
+                    string typeStr = row.Cells["colType"].Value.ToString();
                     cmbType.SelectedItem = typeStr;
                 }
             }
@@ -188,7 +137,7 @@ namespace GUI
                 return;
             }
 
-            string name = row.Cells["Name"].Value.ToString();
+            string name = row.Cells["colName"].Value.ToString();
             var result = MessageBox.Show($"Удалить компонент '{name}'? (Логическое удаление)", "Подтверждение", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
             if (result == DialogResult.Yes)
             {
@@ -234,15 +183,13 @@ namespace GUI
             {
                 if (_isAdding)
                 {
-                    _dataManager.AddComponent(name, typeStr); // используем существующий метод
+                    _dataManager.AddComponent(name, typeStr);
                 }
                 else if (_isEditing)
                 {
-                    // Редактирование: нужно обновить имя и тип
-                    _dataManager.UpdateComponent(_editingOffset, name, type); // нужно реализовать
+                    _dataManager.UpdateComponent(_editingOffset, name, type);
                 }
 
-                // После успешного сохранения перезагружаем список и возвращаемся в режим просмотра
                 LoadComponents();
                 SetViewMode();
             }
@@ -257,17 +204,38 @@ namespace GUI
             SetViewMode();
         }
 
-        private void dgvComponents_SelectionChanged(object sender, EventArgs e)
+        private void SelectCurrentRow()
         {
-            // Можно заполнять поля при выборе, если не в режиме редактирования/добавления
-            if (!_isAdding && !_isEditing)
+            var row = GetSelectedRow();
+            if (row == null)
             {
-                var row = GetSelectedRow();
-                if (row != null)
-                {
-                    txtName.Text = row.Cells["Name"].Value.ToString();
-                    cmbType.SelectedItem = row.Cells["Type"].Value.ToString();
-                }
+                MessageBox.Show("Выберите компонент из списка.", "Информация", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            SelectedComponentOffset = (int)row.Tag;
+            SelectedComponentName = row.Cells["colName"].Value.ToString();
+            string typeStr = row.Cells["colType"].Value.ToString();
+            SelectedComponentType = typeStr switch
+            {
+                "Изделие" => ComponentTypes.Product,
+                "Узел" => ComponentTypes.Node,
+                "Деталь" => ComponentTypes.Detail,
+                _ => throw new InvalidOperationException()
+            };
+            DialogResult = DialogResult.OK;
+            Close();
+        }
+
+        private void btnSelect_Click(object sender, EventArgs e)
+        {
+            SelectCurrentRow();
+        }
+
+        private void dgvComponents_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
+        {
+            if (_allowSelection && e.RowIndex >= 0)
+            {
+                SelectCurrentRow();
             }
         }
     }

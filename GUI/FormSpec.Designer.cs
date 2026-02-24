@@ -2,15 +2,8 @@
 {
     partial class FormSpec
     {
-        /// <summary>
-        /// Required designer variable.
-        /// </summary>
         private System.ComponentModel.IContainer components = null;
 
-        /// <summary>
-        /// Clean up any resources being used.
-        /// </summary>
-        /// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
         protected override void Dispose(bool disposing)
         {
             if (disposing && (components != null))
@@ -20,23 +13,19 @@
             base.Dispose(disposing);
         }
 
-        #region Windows Form Designer generated code
-
-        /// <summary>
-        /// Required method for Designer support - do not modify
-        /// the contents of this method with the code editor.
-        /// </summary>
         private void InitializeComponent()
         {
-            TreeNode treeNode1 = new TreeNode("Деталь 1");
-            TreeNode treeNode2 = new TreeNode("Узел1", new TreeNode[] { treeNode1 });
-            TreeNode treeNode3 = new TreeNode("Узел2");
-            TreeNode treeNode4 = new TreeNode("Изделие 1", new TreeNode[] { treeNode2, treeNode3 });
+            components = new System.ComponentModel.Container();
             btnSearch = new Button();
             treeView1 = new TreeView();
             txtComponentName = new TextBox();
             panel1 = new Panel();
+            contextMenuStrip = new ContextMenuStrip(components);
+            addToolStripMenuItem = new ToolStripMenuItem("Добавить");
+            editToolStripMenuItem = new ToolStripMenuItem("Изменить");
+            deleteToolStripMenuItem = new ToolStripMenuItem("Удалить");
             panel1.SuspendLayout();
+            contextMenuStrip.SuspendLayout();
             SuspendLayout();
             // 
             // btnSearch
@@ -56,17 +45,10 @@
             treeView1.Dock = DockStyle.Top;
             treeView1.Location = new Point(0, 82);
             treeView1.Name = "treeView1";
-            treeNode1.Name = "";
-            treeNode1.Text = "Деталь 1";
-            treeNode2.Name = "Узел1";
-            treeNode2.Text = "Узел1";
-            treeNode3.Name = "Узел2";
-            treeNode3.Text = "Узел2";
-            treeNode4.Name = "Узел0";
-            treeNode4.Text = "Изделие 1";
-            treeView1.Nodes.AddRange(new TreeNode[] { treeNode4 });
             treeView1.Size = new Size(746, 385);
             treeView1.TabIndex = 3;
+            treeView1.ContextMenuStrip = contextMenuStrip;
+            treeView1.MouseDown += treeView1_MouseDown;
             // 
             // txtComponentName
             // 
@@ -74,6 +56,7 @@
             txtComponentName.Name = "txtComponentName";
             txtComponentName.Size = new Size(262, 27);
             txtComponentName.TabIndex = 4;
+            txtComponentName.Text = "";
             // 
             // panel1
             // 
@@ -85,24 +68,59 @@
             panel1.Size = new Size(746, 82);
             panel1.TabIndex = 5;
             // 
-            // Form2
+            // contextMenuStrip
+            // 
+            contextMenuStrip.Items.AddRange(new ToolStripItem[] {
+                addToolStripMenuItem,
+                editToolStripMenuItem,
+                deleteToolStripMenuItem
+            });
+            contextMenuStrip.Name = "contextMenuStrip";
+            contextMenuStrip.Size = new Size(181, 70);
+            // 
+            // addToolStripMenuItem
+            // 
+            addToolStripMenuItem.Name = "addToolStripMenuItem";
+            addToolStripMenuItem.Size = new Size(180, 22);
+            addToolStripMenuItem.Text = "Добавить";
+            addToolStripMenuItem.Click += contextMenuAdd_Click;
+            // 
+            // editToolStripMenuItem
+            // 
+            editToolStripMenuItem.Name = "editToolStripMenuItem";
+            editToolStripMenuItem.Size = new Size(180, 22);
+            editToolStripMenuItem.Text = "Изменить";
+            editToolStripMenuItem.Click += contextMenuEdit_Click;
+            // 
+            // deleteToolStripMenuItem
+            // 
+            deleteToolStripMenuItem.Name = "deleteToolStripMenuItem";
+            deleteToolStripMenuItem.Size = new Size(180, 22);
+            deleteToolStripMenuItem.Text = "Удалить";
+            deleteToolStripMenuItem.Click += contextMenuDelete_Click;
+            // 
+            // FormSpec
             // 
             AutoScaleDimensions = new SizeF(8F, 20F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(746, 450);
             Controls.Add(treeView1);
             Controls.Add(panel1);
-            Name = "Form2";
+            Name = "FormSpec";
             Text = "Спецификация";
             panel1.ResumeLayout(false);
             panel1.PerformLayout();
+            contextMenuStrip.ResumeLayout(false);
             ResumeLayout(false);
         }
 
-        #endregion
         private Button btnSearch;
         private TreeView treeView1;
         private TextBox txtComponentName;
         private Panel panel1;
+        private ContextMenuStrip contextMenuStrip;
+        private ToolStripMenuItem addToolStripMenuItem;
+        private ToolStripMenuItem editToolStripMenuItem;
+        private ToolStripMenuItem deleteToolStripMenuItem;
     }
 }

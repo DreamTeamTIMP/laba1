@@ -1,183 +1,153 @@
-﻿    using System;
-    using System.Collections.Generic;
-    using System.Windows.Forms;
-    using GUI;
-    using laba1New.Helpers;
+﻿using GUI;
+using laba1New.Helpers;
+using System;
+using System.Collections.Generic;
+using System.Windows.Forms;
 
-    namespace Laba1TIMPWinForms
+namespace Laba1TIMPWinForms
+{
+    public partial class FormSpec : Form
     {
-        public partial class FormSpec : Form
+        private DataManager _dataManager;
+        private int _currentProdOffset = -1;
+        private string _currentProdName = "";
+        private TreeNode _rightClickedNode;
+
+        public FormSpec(DataManager dataManager)
         {
-            private DataManager _dataManager;
-            private int _currentProdOffset = -1;
-            private string _currentProdName = "";
+            InitializeComponent();
+            _dataManager = dataManager ?? throw new ArgumentNullException(nameof(dataManager));
+        }
 
-            // Для контекстного меню
-            private TreeNode _rightClickedNode;
-
-            public FormSpec(DataManager dataManager)
+        private void btnSearch_Click(object sender, EventArgs e)
+        {
+            string name = txtComponentName.Text.Trim();
+            if (string.IsNullOrEmpty(name))
             {
-                InitializeComponent();
-                _dataManager = dataManager ?? throw new ArgumentNullException(nameof(dataManager));
-                ConfigureControls();
+                MessageBox.Show("Введите наименование компонента.", "Информация", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
             }
 
-            private void ConfigureControls()
+            try
             {
-                // Настройка элементов
-                txtComponentName.Text = "";
-                btnSearch.Text = "Найти";
-                treeView1.Nodes.Clear();
-
-                // Настройка контекстного меню
-                var contextMenu = new ContextMenuStrip();
-                var addItem = new ToolStripMenuItem("Добавить");
-                var editItem = new ToolStripMenuItem("Изменить");
-                var deleteItem = new ToolStripMenuItem("Удалить");
-                addItem.Click += contextMenuAdd_Click;
-                editItem.Click += contextMenuEdit_Click;
-                deleteItem.Click += contextMenuDelete_Click;
-                contextMenu.Items.AddRange(new ToolStripItem[] { addItem, editItem, deleteItem });
-                treeView1.ContextMenuStrip = contextMenu;
-
-                // Подписка на событие клика правой кнопкой для запоминания узла
-                treeView1.MouseDown += (s, e) =>
+                var node = _dataManager.FindNode(name);
+                if (node == null)
                 {
-                    if (e.Button == MouseButtons.Right)
-                    {
-                        _rightClickedNode = treeView1.GetNodeAt(e.Location);
-                    }
-                };
-            }
-
-            // Поиск компонента по имени и загрузка его спецификации
-            private void btnSearch_Click(object sender, EventArgs e)
-            {
-                string name = txtComponentName.Text.Trim();
-                if (string.IsNullOrEmpty(name))
-                {
-                    MessageBox.Show("Введите наименование компонента.", "Информация", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show("Компонент не найден.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
 
-                try
+                if (node.Type == ComponentTypes.Detail)
                 {
-                    var node = _dataManager.FindNode(name);
-                    if (node == null)
-                    {
-                        MessageBox.Show("Компонент не найден.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        return;
-                    }
-
-                    if (node.Type == ComponentTypes.Detail)
-                    {
-                        MessageBox.Show("Деталь не имеет спецификации.", "Информация", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        return;
-                    }
-
-                    _currentProdOffset = node.Offset;
-                    _currentProdName = node.Name;
-                    this.Text = $"Спецификация: {_currentProdName}";
-                    LoadSpecificationTree();
+                    MessageBox.Show("Деталь не имеет спецификации.", "Информация", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
                 }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Ошибка: {ex.Message}", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
+
+                _currentProdOffset = node.Offset;
+                _currentProdName = node.Name;
+                Text = $"Спецификация: {_currentProdName}";
+                LoadSpecificationTree();
             }
-
-            // Асинхронная загрузка дерева
-            private async void LoadSpecificationTree()
+            catch (Exception ex)
             {
-                try
-                {
-                    treeView1.Nodes.Clear();
-
-                    var rootNode = await Task.Run(() => BuildSpecificationTree(_currentProdOffset));
-
-                    if (rootNode == null)
-                    {
-                        MessageBox.Show("Не удалось загрузить спецификацию.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        return;
-                    }
-
-                    TreeNode treeRoot = new TreeNode(rootNode.Text);
-                    treeRoot.Tag = rootNode;
-                    AddChildNodes(treeRoot, rootNode.Children);
-                    treeView1.Nodes.Add(treeRoot);
-                    treeView1.ExpandAll();
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Ошибка загрузки спецификации: {ex.Message}", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
-                finally
-                {
-                }
+                MessageBox.Show($"Ошибка: {ex.Message}", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
 
-            // Рекурсивное построение дерева данных
-            private SpecTreeNode BuildSpecificationTree(int prodOffset)
+        private async void LoadSpecificationTree()
+        {
+            try
             {
-                var prodNode = new ProdNodeHelper(_dataManager.GetProdStream(), prodOffset, _dataManager.NameSize);
-                if (prodNode.CanBeDel != 0) return null;
+                treeView1.Nodes.Clear();
 
-                string typeStr = prodNode.Type switch
-                {
-                    ComponentTypes.Product => "Изделие",
-                    ComponentTypes.Node => "Узел",
-                    ComponentTypes.Detail => "Деталь",
-                    _ => "Неизвестно"
-                };
-                var root = new SpecTreeNode
-                {
-                    ProdOffset = prodOffset,
-                    Name = prodNode.Name,
-                    Type = prodNode.Type,
-                    Mentions = 1,
-                    Text = $"{prodNode.Name} ({typeStr})"
-                };
+                var rootNode = await Task.Run(() => BuildSpecificationTree(_currentProdOffset));
 
-                if (prodNode.SpecNodePtr != -1)
+                if (rootNode == null)
                 {
-                    int currSpec = prodNode.SpecNodePtr;
-                    while (currSpec != -1)
+                    MessageBox.Show("Не удалось загрузить спецификацию.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                TreeNode treeRoot = new TreeNode(rootNode.Text);
+                treeRoot.Tag = rootNode;
+                AddChildNodes(treeRoot, rootNode.Children);
+                treeView1.Nodes.Add(treeRoot);
+                treeView1.ExpandAll();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Ошибка загрузки спецификации: {ex.Message}", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private SpecTreeNode BuildSpecificationTree(int prodOffset)
+        {
+            var prodNode = new ProdNodeHelper(_dataManager.GetProdStream(), prodOffset, _dataManager.NameSize);
+            if (prodNode.CanBeDel != 0) return null;
+
+            string typeStr = prodNode.Type switch
+            {
+                ComponentTypes.Product => "Изделие",
+                ComponentTypes.Node => "Узел",
+                ComponentTypes.Detail => "Деталь",
+                _ => "Неизвестно"
+            };
+            var root = new SpecTreeNode
+            {
+                ProdOffset = prodOffset,
+                Name = prodNode.Name,
+                Type = prodNode.Type,
+                Mentions = 1,
+                Text = $"{prodNode.Name} ({typeStr})"
+            };
+
+            if (prodNode.SpecNodePtr != -1)
+            {
+                int currSpec = prodNode.SpecNodePtr;
+                while (currSpec != -1)
+                {
+                    var spec = new SpecNodeHelper(_dataManager.GetSpecStream(), currSpec);
+                    if (spec.CanBeDel == 0)
                     {
-                        var spec = new SpecNodeHelper(_dataManager.GetSpecStream(), currSpec);
-                        if (spec.CanBeDel == 0)
+                        int childProdOffset = spec.ProdNodePtr;
+                        var childProd = new ProdNodeHelper(_dataManager.GetProdStream(), childProdOffset, _dataManager.NameSize);
+                        if (childProd.CanBeDel == 0)
                         {
-                            int childProdOffset = spec.ProdNodePtr;
-                            var childProd = new ProdNodeHelper(_dataManager.GetProdStream(), childProdOffset, _dataManager.NameSize);
-                            if (childProd.CanBeDel == 0)
+                            var childNode = BuildSpecificationTree(childProdOffset);
+                            if (childNode != null)
                             {
-                                var childNode = BuildSpecificationTree(childProdOffset);
-                                if (childNode != null)
-                                {
-                                    childNode.Mentions = spec.Mentions;
-                                    childNode.SpecOffset = currSpec; // сохраняем смещение записи спецификации для редактирования/удаления
-                                    childNode.Text = $"{childProd.Name} (x{spec.Mentions})";
-                                    root.Children.Add(childNode);
-                                }
+                                childNode.Mentions = spec.Mentions;
+                                childNode.SpecOffset = currSpec;
+                                childNode.Text = $"{childProd.Name} (x{spec.Mentions})";
+                                root.Children.Add(childNode);
                             }
                         }
-                        currSpec = spec.NextNodePtr;
                     }
+                    currSpec = spec.NextNodePtr;
                 }
-                return root;
             }
+            return root;
+        }
 
-            private void AddChildNodes(TreeNode parentNode, List<SpecTreeNode> children)
+        private void AddChildNodes(TreeNode parentNode, List<SpecTreeNode> children)
+        {
+            foreach (var child in children)
             {
-                foreach (var child in children)
-                {
-                    TreeNode childNode = new TreeNode(child.Text);
-                    childNode.Tag = child;
-                    parentNode.Nodes.Add(childNode);
-                    AddChildNodes(childNode, child.Children);
-                }
+                TreeNode childNode = new TreeNode(child.Text);
+                childNode.Tag = child;
+                parentNode.Nodes.Add(childNode);
+                AddChildNodes(childNode, child.Children);
             }
+        }
 
-        // --- Обработчики контекстного меню ---
+        private void treeView1_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Right)
+            {
+                _rightClickedNode = treeView1.GetNodeAt(e.Location);
+            }
+        }
+
         private void contextMenuEdit_Click(object sender, EventArgs e)
         {
             if (_rightClickedNode == null) return;
@@ -260,27 +230,5 @@
                 }
             }
         }
-        private string TypeToString(byte type)
-            {
-                return type switch
-                {
-                    ComponentTypes.Product => "Изделие",
-                    ComponentTypes.Node => "Узел",
-                    ComponentTypes.Detail => "Деталь",
-                    _ => "Неизвестно"
-                };
-            }
-        }
-
-        // Класс для хранения данных узла
-        public class SpecTreeNode
-        {
-            public int ProdOffset { get; set; }        // смещение компонента в .prd
-            public int SpecOffset { get; set; }        // смещение записи в .prs (0 для корня)
-            public string Name { get; set; }
-            public byte Type { get; set; }
-            public ushort Mentions { get; set; }
-            public string Text { get; set; }
-            public List<SpecTreeNode> Children { get; set; } = new List<SpecTreeNode>();
-        }
     }
+}

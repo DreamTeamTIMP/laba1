@@ -6,19 +6,20 @@ public partial class DataManager : IDisposable
     private FileStream? _prodFs;
     private FileStream? _specFs;
     private ushort _nameSize;
-
+    
     //  CREATE 
-    public void Create(string prodName, ushort dataSize, string? specName = null)
+    public void Create(string prodPath, ushort dataSize, string? specPath = null)
     {
         _prodFs?.Close();
         _specFs?.Close();
 
-        specName ??= prodName + ".prs";
-        if (specName.Length > 16)
+        specPath ??= prodPath + ".prs";
+        prodPath += ".prd";
+        if (specPath.Length > 16)
             throw new ArgumentException("Имя файла спецификации не может быть длиннее 16 символов.");
 
-        _prodFs = new FileStream(prodName + ".prd", FileMode.Create);
-        _specFs = new FileStream(specName, FileMode.Create);
+        _prodFs = new FileStream(prodPath, FileMode.Create);
+        _specFs = new FileStream(specPath, FileMode.Create);
 
         // Заголовок .prd (28 байт)
         _prodFs.Write(Encoding.ASCII.GetBytes("PS"), 0, 2);
@@ -26,23 +27,25 @@ public partial class DataManager : IDisposable
         _prodFs.Write(BitConverter.GetBytes(-1), 0, 4); // FirstNode
         _prodFs.Write(BitConverter.GetBytes(28), 0, 4); // FreeSpace
         byte[] nameBuf = new byte[16];
-        Encoding.ASCII.GetBytes(specName.PadRight(16)).CopyTo(nameBuf, 0);
+        Encoding.ASCII.GetBytes(specPath.PadRight(16)).CopyTo(nameBuf, 0);
         _prodFs.Write(nameBuf, 0, 16);
 
         // Заголовок .prs (8 байт)
         _specFs.Write(BitConverter.GetBytes(-1), 0, 4); // FirstNode
         _specFs.Write(BitConverter.GetBytes(8), 0, 4);  // FreeSpace
-        
-        // Принудительно сбрасываем буферы на диск
-        _prodFs.Flush();
-        _specFs.Flush();
+
+        _prodFs.Close();
+        _specFs.Close();
+        _prodFs = null;
+        _specFs = null;
         _nameSize = dataSize;
     }
 
     //  OPEN 
     public void Open(string prodPath)
     {
-
+        _prodFs?.Close();
+        _specFs?.Close();
         if (!prodPath.EndsWith(".prd")) prodPath += ".prd";
         if (!File.Exists(prodPath)) throw new Exception("Файл не найден.");
         try
@@ -56,7 +59,6 @@ public partial class DataManager : IDisposable
             throw new InvalidOperationException($"Файл {prodPath} уже открыт.");
         }
 
-        // Проверка сигнатуры
         byte[] sig = new byte[2];
         _prodFs.Read(sig, 0, 2);
         if (Encoding.ASCII.GetString(sig) != "PS")
@@ -83,7 +85,7 @@ public partial class DataManager : IDisposable
 
 
 
-        Console.WriteLine($"База {prodPath} открыта.");
+        Console.WriteLine($"файлы {prodPath},{specPath} открыты.");
     }
 
     //  INPUT (Тип: Изделие, Узел, Деталь) 
@@ -251,10 +253,11 @@ public partial class DataManager : IDisposable
             curr = spec.NextNodePtr;
         }
     }
-    
+
     //  Перестроение алфавитного порядка всех активных записей .prd 
     private void ReorderAll()
     {
+        // Собираем все активные компоненты (CanBeDel == 0)
         var activeNodes = new List<(int offset, string name)>();
         int curr = 28;
         int freeSpace = GetFreeProd();
@@ -265,22 +268,33 @@ public partial class DataManager : IDisposable
                 activeNodes.Add((curr, node.Name));
             curr += node.TotalSize;
         }
+
+        // Сортируем по имени (без учёта регистра)
         activeNodes.Sort((a, b) => string.Compare(a.name, b.name, StringComparison.OrdinalIgnoreCase));
+
+        // Обновляем голову списка
         if (activeNodes.Count > 0)
         {
             SetFirstProd(activeNodes[0].offset);
-            for (int i = 0; i < activeNodes.Count; i++)
-            {
-                var node = new ProdNodeHelper(_prodFs!, activeNodes[i].offset, _nameSize);
-                node.NextNodePtr = (i < activeNodes.Count - 1) ? activeNodes[i + 1].offset : -1;
-            }
         }
         else
         {
             SetFirstProd(-1);
+            return;
         }
+
+        // Проставляем указатели на следующий узел
+        for (int i = 0; i < activeNodes.Count - 1; i++)
+        {
+            var node = new ProdNodeHelper(_prodFs!, activeNodes[i].offset, _nameSize);
+            node.NextNodePtr = activeNodes[i + 1].offset;
+        }
+
+        // Последний узел указывает на -1
+        var lastNode = new ProdNodeHelper(_prodFs!, activeNodes[activeNodes.Count - 1].offset, _nameSize);
+        lastNode.NextNodePtr = -1;
     }
-    
+
     //  TRUNCATE (физическое удаление) 
     public void Truncate()
     {
@@ -360,9 +374,9 @@ public partial class DataManager : IDisposable
 string tempSpecPath = _specFs!.Name + ".tmp";
 using (var newSpecFs = new FileStream(tempSpecPath, FileMode.Create))
 {
-    // Заголовок: FirstSpec = -1 (не используется), FreeSpace
-    WriteInt(newSpecFs, -1);
-    WriteInt(newSpecFs, 8 + totalActiveSpecs * 11);
+            // Заголовок: FirstSpec = -1 (не используется), FreeSpace
+            WriteInt(newSpecFs, -1);
+            WriteInt(newSpecFs, 8 + totalActiveSpecs * 11);
 
     // Записываем записи группами по родителям
     foreach (var comp in activeComps)
@@ -377,9 +391,9 @@ using (var newSpecFs = new FileStream(tempSpecPath, FileMode.Create))
                 int nextInGroup = (i < specList.Count - 1) ? oldToNewSpec[specList[i + 1]] : -1;
 
                 newSpecFs.WriteByte(0); // canBeDel
-                WriteInt(newSpecFs, oldToNewComp[data.prodPtr]);
+                        WriteInt(newSpecFs, oldToNewComp[data.prodPtr]);
                 WriteUshort(newSpecFs, data.mentions);
-                WriteInt(newSpecFs, nextInGroup);
+                        WriteInt(newSpecFs, nextInGroup);
             }
         }
     }
@@ -393,8 +407,8 @@ using (var newProdFs = new FileStream(tempProdPath, FileMode.Create))
     newProdFs.Write(Encoding.ASCII.GetBytes("PS"), 0, 2);
     WriteUshort(newProdFs, _nameSize);
     int firstProd = activeComps.Count > 0 ? oldToNewComp[activeComps[0].oldOffset] : -1;
-    WriteInt(newProdFs, firstProd);
-    WriteInt(newProdFs, 28 + activeComps.Count * compSize); // freeSpace
+            WriteInt(newProdFs, firstProd);
+            WriteInt(newProdFs, 28 + activeComps.Count * compSize); // freeSpace
     
     // Имя файла спецификации в заголовке (должно быть ASCII, т.к. это имя файла)
     byte[] nameBuf = new byte[16];
@@ -418,8 +432,8 @@ using (var newProdFs = new FileStream(tempProdPath, FileMode.Create))
         newProdFs.Seek(newOff, SeekOrigin.Begin);
         newProdFs.WriteByte(0); // canBeDel
         newProdFs.WriteByte(comp.type);
-        WriteInt(newProdFs, newSpecPtr);
-        WriteInt(newProdFs, newNext);
+                WriteInt(newProdFs, newSpecPtr);
+                WriteInt(newProdFs, newNext);
         
         // Запись имени компонента в windows-1251 с правильным заполнением пробелами
         byte[] nameBytes = new byte[_nameSize];
@@ -452,7 +466,6 @@ _specFs = new FileStream(_specFs.Name, FileMode.Open, FileAccess.ReadWrite);
 Console.WriteLine("Truncate выполнен.");
         }
     
-    // Добавим метод WriteUshort для удобства
     private void WriteUshort(FileStream fs, ushort value)
     {
         fs.Write(BitConverter.GetBytes(value), 0, 2);
@@ -576,8 +589,9 @@ Console.WriteLine("Truncate выполнен.");
     private void UpdateFreeProd(int v) { _prodFs!.Seek(8, SeekOrigin.Begin); WriteInt(_prodFs, v); }
     private int GetFreeSpec() { _specFs!.Seek(4, SeekOrigin.Begin); return ReadInt(_specFs); }
     private void UpdateFreeSpec(int v) { _specFs!.Seek(4, SeekOrigin.Begin); WriteInt(_specFs, v); }
-    private int ReadInt(FileStream fs) { byte[] b = new byte[4]; fs.Read(b, 0, 4); return BitConverter.ToInt32(b, 0); }
-    private void WriteInt(FileStream fs, int v) { fs.Write(BitConverter.GetBytes(v), 0, 4); }
+    private static int ReadInt(FileStream fs) { byte[] b = new byte[4]; fs.Read(b, 0, 4); return BitConverter.ToInt32(b, 0); }
+    private static void WriteInt(FileStream fs, int v) { fs.Write(BitConverter.GetBytes(v), 0, 4); }
+
     //  Поиск узла по имени 
     public ProdNodeHelper? FindNode(string name, bool includeDeleted = false)
     {
@@ -704,7 +718,7 @@ Console.WriteLine("Truncate выполнен.");
         if (_specFs == null) throw new InvalidOperationException("Файл не открыт.");
         return _specFs;
     }
-    public ushort NameSize => _nameSize;
+
     // Проверка, является ли potentialAncestor предком node
     private bool IsAncestor(int potentialAncestorOffset, int nodeOffset)
     {
@@ -748,6 +762,10 @@ Console.WriteLine("Truncate выполнен.");
 
         spec.Mentions = newMentions;
     }
+
+    public ushort NameSize => _nameSize;
+    public bool IsOpen => _prodFs != null && _specFs != null;
+
     public void Dispose()
     {
         _prodFs?.Close();

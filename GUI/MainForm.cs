@@ -1,7 +1,7 @@
 using System;
 using System.Windows.Forms;
 using GUI;
-using laba1New; // или соответствующий namespace, где лежит DataManager
+using laba1New;
 
 namespace Laba1TIMPWinForms
 {
@@ -13,18 +13,8 @@ namespace Laba1TIMPWinForms
         public MainForm()
         {
             InitializeComponent();
-            // Изначально кнопки неактивны, пока файл не открыт
-            button2.Enabled = false;
-            button3.Enabled = false;
         }
 
-        // Обработчик загрузки формы (можно оставить пустым или добавить инициализацию)
-        private void Form1_Load(object sender, EventArgs e)
-        {
-            // Можно попытаться открыть файл, переданный в аргументах командной строки, но пока не требуется
-        }
-
-        // Открыть файл
         private void button1_Click(object sender, EventArgs e)
         {
             using (OpenFileDialog openFileDialog = new OpenFileDialog())
@@ -37,7 +27,6 @@ namespace Laba1TIMPWinForms
                 {
                     try
                     {
-                        // Если предыдущий менеджер был открыт, закрываем его
                         if (_dataManager != null)
                         {
                             _dataManager.Dispose();
@@ -48,10 +37,8 @@ namespace Laba1TIMPWinForms
                         _dataManager.Open(openFileDialog.FileName);
                         _currentFilePath = openFileDialog.FileName;
 
-                        // Обновляем заголовок формы
                         this.Text = $"Многосвязные списки - {System.IO.Path.GetFileName(_currentFilePath)}";
 
-                        // Активируем кнопки
                         button2.Enabled = true;
                         button3.Enabled = true;
 
@@ -69,7 +56,6 @@ namespace Laba1TIMPWinForms
             }
         }
 
-        // Открыть форму списка компонентов
         private void button2_Click(object sender, EventArgs e)
         {
             if (_dataManager == null)
@@ -78,14 +64,12 @@ namespace Laba1TIMPWinForms
                 return;
             }
 
-            // Открываем форму списка компонентов в режиме редактирования (не выбора)
             using (var form = new ComponentListForm(_dataManager, allowSelection: false))
             {
                 form.ShowDialog();
             }
         }
 
-        // Открыть форму спецификации
         private void button3_Click(object sender, EventArgs e)
         {
             if (_dataManager == null)
@@ -100,7 +84,6 @@ namespace Laba1TIMPWinForms
             }
         }
 
-        // При закрытии главной формы освобождаем ресурсы DataManager
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
             _dataManager?.Dispose();
