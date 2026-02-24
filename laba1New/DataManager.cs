@@ -509,7 +509,13 @@ public partial class DataManager : IDisposable
                         {
                             childNode.Mentions = spec.Mentions;
                             childNode.SpecOffset = currSpec;
-                            childNode.Text = $"{childProd.Name} (x{spec.Mentions})";
+                            childNode.Text = $"{childProd.Name} (x{spec.Mentions}) {childProd.Type switch
+        {
+            ComponentTypes.Product => "Изделие",
+            ComponentTypes.Node => "Узел",
+            ComponentTypes.Detail => "Деталь",
+            _ => "Неизвестно"
+        }}";
                             treeNode.Children.Add(childNode);
                         }
                     }
