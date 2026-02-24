@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Windows.Forms;
-using laba1New.Helpers;
+using laba1.Helpers;
 
 namespace GUI
 {

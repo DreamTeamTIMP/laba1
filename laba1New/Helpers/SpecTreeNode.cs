@@ -1,4 +1,4 @@
-﻿namespace Laba1TIMPWinForms
+﻿namespace laba1.Helpers
 {
     public class SpecTreeNode
     {

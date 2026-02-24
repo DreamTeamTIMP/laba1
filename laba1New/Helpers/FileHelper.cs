@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using System.Text;
 
-namespace laba1New.Helpers;
+namespace laba1.Helpers;
 
 using System.Text;
 

@@ -1,5 +1,5 @@
 ﻿using GUI;
-using laba1New.Helpers;
+using laba1.Helpers;
 using System;
 using System.Collections.Generic;
 using System.Windows.Forms;
@@ -8,7 +8,7 @@ namespace Laba1TIMPWinForms
 {
     public partial class FormSpec : Form
     {
-        private DataManager _dataManager;
+        private readonly DataManager _dataManager;
         private int _currentProdOffset = -1;
         private string _currentProdName = "";
         private TreeNode _rightClickedNode;
@@ -30,23 +30,17 @@ namespace Laba1TIMPWinForms
 
             try
             {
-                var node = _dataManager.FindNode(name);
-                if (node == null)
+                var rootNode = _dataManager.GetSpecificationTree(name);
+                if (rootNode == null)
                 {
-                    MessageBox.Show("Компонент не найден.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show("Компонент не найден или не имеет спецификации.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
 
-                if (node.Type == ComponentTypes.Detail)
-                {
-                    MessageBox.Show("Деталь не имеет спецификации.", "Информация", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    return;
-                }
-
-                _currentProdOffset = node.Offset;
-                _currentProdName = node.Name;
+                _currentProdOffset = rootNode.ProdOffset;
+                _currentProdName = rootNode.Name;
                 Text = $"Спецификация: {_currentProdName}";
-                LoadSpecificationTree();
+                DisplayTree(rootNode);
             }
             catch (Exception ex)
             {
@@ -54,79 +48,14 @@ namespace Laba1TIMPWinForms
             }
         }
 
-        private async void LoadSpecificationTree()
+        private void DisplayTree(SpecTreeNode rootNode)
         {
-            try
-            {
-                treeView1.Nodes.Clear();
-
-                var rootNode = await Task.Run(() => BuildSpecificationTree(_currentProdOffset));
-
-                if (rootNode == null)
-                {
-                    MessageBox.Show("Не удалось загрузить спецификацию.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
-                }
-
-                TreeNode treeRoot = new TreeNode(rootNode.Text);
-                treeRoot.Tag = rootNode;
-                AddChildNodes(treeRoot, rootNode.Children);
-                treeView1.Nodes.Add(treeRoot);
-                treeView1.ExpandAll();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Ошибка загрузки спецификации: {ex.Message}", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
-
-        private SpecTreeNode BuildSpecificationTree(int prodOffset)
-        {
-            var prodNode = new ProdNodeHelper(_dataManager.GetProdStream(), prodOffset, _dataManager.NameSize);
-            if (prodNode.CanBeDel != 0) return null;
-
-            string typeStr = prodNode.Type switch
-            {
-                ComponentTypes.Product => "Изделие",
-                ComponentTypes.Node => "Узел",
-                ComponentTypes.Detail => "Деталь",
-                _ => "Неизвестно"
-            };
-            var root = new SpecTreeNode
-            {
-                ProdOffset = prodOffset,
-                Name = prodNode.Name,
-                Type = prodNode.Type,
-                Mentions = 1,
-                Text = $"{prodNode.Name} ({typeStr})"
-            };
-
-            if (prodNode.SpecNodePtr != -1)
-            {
-                int currSpec = prodNode.SpecNodePtr;
-                while (currSpec != -1)
-                {
-                    var spec = new SpecNodeHelper(_dataManager.GetSpecStream(), currSpec);
-                    if (spec.CanBeDel == 0)
-                    {
-                        int childProdOffset = spec.ProdNodePtr;
-                        var childProd = new ProdNodeHelper(_dataManager.GetProdStream(), childProdOffset, _dataManager.NameSize);
-                        if (childProd.CanBeDel == 0)
-                        {
-                            var childNode = BuildSpecificationTree(childProdOffset);
-                            if (childNode != null)
-                            {
-                                childNode.Mentions = spec.Mentions;
-                                childNode.SpecOffset = currSpec;
-                                childNode.Text = $"{childProd.Name} (x{spec.Mentions})";
-                                root.Children.Add(childNode);
-                            }
-                        }
-                    }
-                    currSpec = spec.NextNodePtr;
-                }
-            }
-            return root;
+            treeView1.Nodes.Clear();
+            TreeNode treeRoot = new TreeNode(rootNode.Text);
+            treeRoot.Tag = rootNode;
+            AddChildNodes(treeRoot, rootNode.Children);
+            treeView1.Nodes.Add(treeRoot);
+            treeView1.ExpandAll();
         }
 
         private void AddChildNodes(TreeNode parentNode, List<SpecTreeNode> children)
@@ -140,14 +69,7 @@ namespace Laba1TIMPWinForms
             }
         }
 
-        private void treeView1_MouseDown(object sender, MouseEventArgs e)
-        {
-            if (e.Button == MouseButtons.Right)
-            {
-                _rightClickedNode = treeView1.GetNodeAt(e.Location);
-            }
-        }
-
+        // Остальные методы (контекстное меню) используют _dataManager для операций
         private void contextMenuEdit_Click(object sender, EventArgs e)
         {
             if (_rightClickedNode == null) return;
@@ -160,7 +82,7 @@ namespace Laba1TIMPWinForms
                 try
                 {
                     _dataManager.UpdateMentions(nodeData.SpecOffset, newMentions);
-                    LoadSpecificationTree();
+                    RefreshTree();
                 }
                 catch (Exception ex)
                 {
@@ -185,7 +107,7 @@ namespace Laba1TIMPWinForms
                 try
                 {
                     _dataManager.DeleteRelation(nodeData.SpecOffset);
-                    LoadSpecificationTree();
+                    RefreshTree();
                 }
                 catch (Exception ex)
                 {
@@ -216,7 +138,7 @@ namespace Laba1TIMPWinForms
                         try
                         {
                             _dataManager.AddRelation(nodeData.ProdOffset, form.SelectedComponentOffset, count);
-                            LoadSpecificationTree();
+                            RefreshTree();
                         }
                         catch (Exception ex)
                         {
@@ -229,6 +151,22 @@ namespace Laba1TIMPWinForms
                     }
                 }
             }
+        }
+
+        private void treeView1_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Right)
+            {
+                _rightClickedNode = treeView1.GetNodeAt(e.Location);
+            }
+        }
+
+        private void RefreshTree()
+        {
+            if (_currentProdOffset == -1) return;
+            var rootNode = _dataManager.GetSpecificationTree(_currentProdName);
+            if (rootNode != null)
+                DisplayTree(rootNode);
         }
     }
 }

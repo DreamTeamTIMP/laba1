@@ -1,6 +1,6 @@
 using System.Buffers.Binary;
 
-namespace laba1New.Helpers;
+namespace laba1.Helpers;
 
 public static class ComponentTypes
 {
