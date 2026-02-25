@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 
 namespace laba1.Helpers
 {
+    // Класс-помощник для заголовка
     public class FileHeaderHelper
     {
         private readonly FileStream _prodFs;

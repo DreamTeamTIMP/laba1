@@ -34,8 +34,7 @@ public partial class DataManager : IDisposable
     //  CREATE 
     public void Create(string prodPath, ushort dataSize, string? specPath = null)
     {
-        _prodFs?.Close();
-        _specFs?.Close();
+        Dispose();
 
         specPath ??= prodPath + ".prs";
         prodPath += ".prd";
@@ -48,33 +47,33 @@ public partial class DataManager : IDisposable
         // Заголовок .prd (28 байт)
         _prodFs.Write(Encoding.ASCII.GetBytes("PS"), 0, 2);
         _prodFs.Write(BitConverter.GetBytes(dataSize), 0, 2);
-        _prodFs.Write(BitConverter.GetBytes(-1), 0, 4); // FirstNode
-        _prodFs.Write(BitConverter.GetBytes(28), 0, 4); // FreeSpace
+        // FirstNode
+        _prodFs.Write(BitConverter.GetBytes(-1), 0, 4);
+        // FreeSpace
+        _prodFs.Write(BitConverter.GetBytes(28), 0, 4);
+        
         byte[] nameBuf = new byte[16];
         Encoding.ASCII.GetBytes(specPath.PadRight(16)).CopyTo(nameBuf, 0);
         _prodFs.Write(nameBuf, 0, 16);
 
         // Заголовок .prs (8 байт)
-        _specFs.Write(BitConverter.GetBytes(-1), 0, 4); // FirstNode
-        _specFs.Write(BitConverter.GetBytes(8), 0, 4);  // FreeSpace
+        _specFs.Write(BitConverter.GetBytes(-1), 0, 4); 
+        _specFs.Write(BitConverter.GetBytes(8), 0, 4);  
 
         _nameSize = dataSize;
         _prodPath = prodPath;
         _specPath = specPath;
 
-        _prodFs.Close();
-        _specFs.Close();
+        Dispose();
         _prodFs = null;
         _specFs = null;
 
-        InitHelpers(); // после создания помощники не нужны, но можно оставить для единообразия
     }
 
     //  OPEN 
     public void Open(string prodPath)
     {
-        _prodFs?.Close();
-        _specFs?.Close();
+        Dispose();
 
         if (!prodPath.EndsWith(".prd")) prodPath += ".prd";
         if (!File.Exists(prodPath)) throw new Exception("Файл не найден.");
@@ -101,8 +100,8 @@ public partial class DataManager : IDisposable
         byte[] dsBuf = new byte[2];
         _prodFs.Read(dsBuf, 0, 2);
         _nameSize = BitConverter.ToUInt16(dsBuf, 0);
-
-        _prodFs.Seek(8, SeekOrigin.Current); // пропускаем FirstNodePtr и FreeSpacePtr
+        // пропускаем FirstNodePtr и FreeSpacePtr
+        _prodFs.Seek(8, SeekOrigin.Current); 
         byte[] nameBuf = new byte[16];
         _prodFs.Read(nameBuf, 0, 16);
         string specName = Encoding.ASCII.GetString(nameBuf).Trim();
@@ -143,7 +142,8 @@ public partial class DataManager : IDisposable
         node.CanBeDel = 0;
         node.Type = type;
         node.Name = name;
-        node.NextNodePtr = _headerHelper.GetFirstProd();  // в начало списка
+        // в начало списка
+        node.NextNodePtr = _headerHelper.GetFirstProd();  
         node.SpecNodePtr = -1;
 
         _headerHelper.SetFirstProd(offset);
@@ -192,7 +192,7 @@ public partial class DataManager : IDisposable
             if (existing.CanBeDel == 0 && existing.ProdNodePtr == childOffset)
             {
                 existing.Mentions += count;
-                return; // ничего больше не делаем
+                return;
             }
             cur = existing.NextNodePtr;
         }
@@ -202,7 +202,8 @@ public partial class DataManager : IDisposable
         newEntry.CanBeDel = 0;
         newEntry.ProdNodePtr = childOffset;
         newEntry.Mentions = count;
-        newEntry.NextNodePtr = parent.SpecNodePtr; // в начало подсписка
+        // в начало подсписка
+        newEntry.NextNodePtr = parent.SpecNodePtr; 
         parent.SpecNodePtr = newSpecOff;
         _headerHelper.UpdateFreeSpec(newSpecOff + 11);
     }
@@ -280,8 +281,7 @@ public partial class DataManager : IDisposable
         _truncateHelper!.Truncate();
 
         // После перепаковки нужно переоткрыть файлы заново
-        _prodFs?.Close();
-        _specFs?.Close();
+        Dispose();
 
         // Открываем заново
         _prodFs = new FileStream(_prodPath, FileMode.Open, FileAccess.ReadWrite);
@@ -350,12 +350,6 @@ public partial class DataManager : IDisposable
         Console.WriteLine("  - Кратность связи по умолчанию = 1");
     }
 
-    //  Поиск узла по имени (публичный метод)
-    public ProdNodeHelper? FindNode(string name, bool includeDeleted = false)
-    {
-        return _nodeFinder?.FindNode(name, _headerHelper!.GetFirstProd(), includeDeleted);
-    }
-
     //  Получить список активных компонентов (для GUI)
     public List<(int Offset, string Name, byte Type)> GetActiveComponents()
     {
@@ -411,7 +405,8 @@ public partial class DataManager : IDisposable
     {
         var node = new ProdNodeHelper(_prodFs!, offset, _nameSize);
         if (node.CanBeDel != 0)
-            return; // уже удалён
+            // Уже удалён
+            return; 
 
         if (_nodeFinder!.HasReferences(offset, _headerHelper!.GetFirstProd()))
             throw new Exception($"Ошибка: на компонент '{node.Name}' есть ссылки в спецификациях!");
@@ -424,7 +419,8 @@ public partial class DataManager : IDisposable
     {
         var spec = new SpecNodeHelper(_specFs!, specOffset);
         if (spec.CanBeDel != 0)
-            return; // уже удалена
+            // Уже удалена
+            return; 
 
         spec.CanBeDel = -1;
     }
@@ -449,7 +445,8 @@ public partial class DataManager : IDisposable
         while (currComp != -1)
         {
             var parent = new ProdNodeHelper(_prodFs!, currComp, _nameSize);
-            if (parent.CanBeDel == 0) // только активные родители
+            // только активные родители
+            if (parent.CanBeDel == 0) 
             {
                 int currSpec = parent.SpecNodePtr;
                 while (currSpec != -1)
@@ -465,69 +462,18 @@ public partial class DataManager : IDisposable
         return false;
     }
 
+    // Получение дерева спецификации
     public SpecTreeNode? GetSpecificationTree(string componentName)
     {
         var node = _nodeFinder!.FindNode(componentName, _headerHelper!.GetFirstProd());
         if (node == null) return null;
-        if (node.Type == ComponentTypes.Detail) return null; // деталь не имеет спецификации
-        return BuildSpecTree(node.Offset);
+        // Деталь не имеет спецификации
+        if (node.Type == ComponentTypes.Detail) return null; 
+        return _treePrinter!.BuildSpecTree(node.Offset);
     }
+    // Постройка дерева спецификаций (для GUI)
 
-    private SpecTreeNode BuildSpecTree(int prodOffset)
-    {
-        var prodNode = new ProdNodeHelper(_prodFs!, prodOffset, _nameSize);
-        string typeStr = prodNode.Type switch
-        {
-            ComponentTypes.Product => "Изделие",
-            ComponentTypes.Node => "Узел",
-            ComponentTypes.Detail => "Деталь",
-            _ => "Неизвестно"
-        };
-        var treeNode = new SpecTreeNode
-        {
-            ProdOffset = prodOffset,
-            Name = prodNode.Name,
-            Type = prodNode.Type,
-            Mentions = 1,
-            Text = $"{prodNode.Name} ({typeStr})"
-        };
-
-        if (prodNode.SpecNodePtr != -1)
-        {
-            int currSpec = prodNode.SpecNodePtr;
-            while (currSpec != -1)
-            {
-                var spec = new SpecNodeHelper(_specFs!, currSpec);
-                if (spec.CanBeDel == 0)
-                {
-                    int childOffset = spec.ProdNodePtr;
-                    var childProd = new ProdNodeHelper(_prodFs!, childOffset, _nameSize);
-                    if (childProd.CanBeDel == 0)
-                    {
-                        var childNode = BuildSpecTree(childOffset);
-                        if (childNode != null)
-                        {
-                            childNode.Mentions = spec.Mentions;
-                            childNode.SpecOffset = currSpec;
-                            childNode.Text = $"{childProd.Name} (x{spec.Mentions}) {childProd.Type switch
-        {
-            ComponentTypes.Product => "Изделие",
-            ComponentTypes.Node => "Узел",
-            ComponentTypes.Detail => "Деталь",
-            _ => "Неизвестно"
-        }}";
-                            treeNode.Children.Add(childNode);
-                        }
-                    }
-                }
-                currSpec = spec.NextNodePtr;
-            }
-        }
-        return treeNode;
-    }
-  
-    public ushort NameSize => _nameSize;
-
+    // Закрытие файлов
     public void Dispose()
     {
         _prodFs?.Close();

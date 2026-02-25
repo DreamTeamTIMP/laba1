@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 
 namespace laba1.Helpers
 {
+    // Класс-помощник для поиска компонентов и их вхождений
     public class NodeFinder
     {
         private readonly FileStream _prodFs;

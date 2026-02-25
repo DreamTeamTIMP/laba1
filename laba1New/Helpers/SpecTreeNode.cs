@@ -1,5 +1,6 @@
 ﻿namespace laba1.Helpers
 {
+    // Класс-помощник для построения дерева в GUI
     public class SpecTreeNode
     {
         public int ProdOffset { get; set; }

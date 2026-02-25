@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 
 namespace laba1.Helpers
 {
+    // Класс-помощник для Перестановки и Восстановления удаленных записей
     public class Reorganizer
     {
         private readonly FileStream _prodFs;

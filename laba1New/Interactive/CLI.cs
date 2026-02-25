@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 
 namespace laba1New
 {
-    static class CLI
+    public static class CLI
     {
         public static void Run()
         {

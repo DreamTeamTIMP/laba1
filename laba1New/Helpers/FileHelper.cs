@@ -5,6 +5,7 @@ namespace laba1.Helpers;
 
 using System.Text;
 
+// Классы-помощники, которые абстрагируют работу с файлами
 public class ProdNodeHelper(FileStream stream, int offset, ushort _nameSize)
 {
     private readonly FileStream _stream = stream;

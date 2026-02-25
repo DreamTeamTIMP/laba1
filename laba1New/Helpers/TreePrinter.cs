@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 
 namespace laba1.Helpers
 {
+    // Класс-помощник печати дерева
     public class TreePrinter
     {
         private readonly FileStream _prodFs;
@@ -46,5 +47,58 @@ namespace laba1.Helpers
                 currentEntry = spec.NextNodePtr;
             }
         }
+        public SpecTreeNode BuildSpecTree(int prodOffset)
+        {
+            var prodNode = new ProdNodeHelper(_prodFs!, prodOffset, _nameSize);
+            string typeStr = prodNode.Type switch
+            {
+                ComponentTypes.Product => "Изделие",
+                ComponentTypes.Node => "Узел",
+                ComponentTypes.Detail => "Деталь",
+                _ => "Неизвестно"
+            };
+            var treeNode = new SpecTreeNode
+            {
+                ProdOffset = prodOffset,
+                Name = prodNode.Name,
+                Type = prodNode.Type,
+                Mentions = 1,
+                Text = $"{prodNode.Name} ({typeStr})"
+            };
+
+            if (prodNode.SpecNodePtr != -1)
+            {
+                int currSpec = prodNode.SpecNodePtr;
+                while (currSpec != -1)
+                {
+                    var spec = new SpecNodeHelper(_specFs!, currSpec);
+                    if (spec.CanBeDel == 0)
+                    {
+                        int childOffset = spec.ProdNodePtr;
+                        var childProd = new ProdNodeHelper(_prodFs!, childOffset, _nameSize);
+                        if (childProd.CanBeDel == 0)
+                        {
+                            var childNode = BuildSpecTree(childOffset);
+                            if (childNode != null)
+                            {
+                                childNode.Mentions = spec.Mentions;
+                                childNode.SpecOffset = currSpec;
+                                childNode.Text = $"{childProd.Name} (x{spec.Mentions}) {childProd.Type switch
+                                {
+                                    ComponentTypes.Product => "Изделие",
+                                    ComponentTypes.Node => "Узел",
+                                    ComponentTypes.Detail => "Деталь",
+                                    _ => "Неизвестно"
+                                }}";
+                                treeNode.Children.Add(childNode);
+                            }
+                        }
+                    }
+                    currSpec = spec.NextNodePtr;
+                }
+            }
+            return treeNode;
+        }
+
     }
 }

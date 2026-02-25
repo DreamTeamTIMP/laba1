@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 
 namespace laba1.Helpers
 {
+    // Класс помощник для физического удаления
     public class TruncateHelper
     {
         private readonly FileStream _prodFs;
@@ -137,7 +138,8 @@ namespace laba1.Helpers
                 WriteUshort(newProdFs, _nameSize);
                 int firstProd = activeComps.Count > 0 ? oldToNewComp[activeComps[0].oldOffset] : -1;
                 WriteInt(newProdFs, firstProd);
-                WriteInt(newProdFs, 28 + activeComps.Count * compSize); // freeSpace
+                // freeSpace
+                WriteInt(newProdFs, 28 + activeComps.Count * compSize); 
 
                 // Имя файла спецификации в заголовке (ASCII)
                 byte[] nameBuf = new byte[16];
@@ -159,7 +161,8 @@ namespace laba1.Helpers
                         newSpecPtr = oldToNewSpec[specList[0]];
 
                     newProdFs.Seek(newOff, SeekOrigin.Begin);
-                    newProdFs.WriteByte(0); // canBeDel
+                    // canBeDel
+                    newProdFs.WriteByte(0); 
                     newProdFs.WriteByte(comp.type);
                     WriteInt(newProdFs, newSpecPtr);
                     WriteInt(newProdFs, newNext);
@@ -186,10 +189,6 @@ namespace laba1.Helpers
             File.Move(tempProdPath, _prodFs.Name);
             File.Delete(_specFs.Name);
             File.Move(tempSpecPath, _specFs.Name);
-
-            // Переоткрываем потоки (в DataManager они будут пересозданы)
-            // Примечание: после замены файлов вызывающий код должен обновить ссылки на _prodFs и _specFs.
-            // Это будет сделано в DataManager.Truncate.
         }
 
         private void WriteInt(FileStream fs, int value)
